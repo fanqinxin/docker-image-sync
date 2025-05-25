@@ -1,0 +1,84 @@
+# 敏感配置文件
+config/users.yaml
+config/registries.yaml
+docs/fix
+
+# 日志文件
+*.log
+logs/
+app.log
+server.log
+
+# 下载和缓存文件
+downloads/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE相关
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# Python相关
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 测试和覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 环境变量文件
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Docker相关
+.dockerignore
+
+# 备份文件
+*.bak
+*.backup
+
+# 临时文件和进程文件
+*.pid
+*.seed
+*.pid.lock
+
+# 依赖目录
+node_modules/
+.npm/
+.cache/ 

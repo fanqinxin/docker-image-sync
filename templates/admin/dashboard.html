@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理控制面板 - Docker镜像同步工具</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .admin-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+            height: 100%;
+        }
+        .admin-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        .admin-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        .stats-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+        }
+        .feature-card {
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- 导航栏 -->
+        <nav class="navbar navbar-dark bg-primary mb-4">
+            <div class="container">
+                <a class="navbar-brand" href="/">🐳 Docker镜像同步工具 - 管理面板</a>
+                <div class="navbar-nav-right d-flex align-items-center">
+                    <!-- 用户信息 -->
+                    <div class="user-info me-3">
+                        <span class="text-white me-2">
+                            <i class="fas fa-user-shield"></i>
+                            <span id="user-display-name">管理员</span>
+                        </span>
+                        <span class="badge bg-warning" id="user-role">管理员</span>
+                    </div>
+                    
+                    <!-- 用户菜单 -->
+                    <div class="dropdown">
+                        <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="userMenuDropdown" data-bs-toggle="dropdown">
+                            <i class="fas fa-cog"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item" href="/">
+                                    <i class="fas fa-home me-2"></i>返回主页
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <button class="dropdown-item" type="button" onclick="changePassword()">
+                                    <i class="fas fa-key me-2"></i>修改密码
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item text-danger" type="button" onclick="logout()">
+                                    <i class="fas fa-sign-out-alt me-2"></i>退出登录
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 主要内容 -->
+        <div class="container">
+            <!-- 页面标题 -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <h2>
+                        <i class="fas fa-tachometer-alt me-2"></i>管理控制面板
+                    </h2>
+                    <p class="text-muted">系统管理和配置中心</p>
+                </div>
+            </div>
+
+            <!-- 统计信息 -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card stats-card">
+                        <div class="card-body text-center">
+                            <i class="fas fa-users admin-icon"></i>
+                            <h4 id="total-users">-</h4>
+                            <p class="mb-0">用户总数</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body text-center">
+                            <i class="fas fa-server admin-icon"></i>
+                            <h4 id="total-registries">-</h4>
+                            <p class="mb-0">私服配置</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body text-center">
+                            <i class="fas fa-download admin-icon"></i>
+                            <h4 id="total-files">-</h4>
+                            <p class="mb-0">下载文件</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body text-center">
+                            <i class="fas fa-clock admin-icon"></i>
+                            <h4 id="active-sessions">-</h4>
+                            <p class="mb-0">活跃会话</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 管理功能 -->
+            <div class="row">
+                <div class="col-md-6 mb-4">
+                    <div class="card admin-card feature-card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-users-cog admin-icon text-primary"></i>
+                            <h5 class="card-title">用户管理</h5>
+                            <p class="card-text">
+                                管理系统用户，创建、编辑、删除用户账户，设置用户权限和角色。
+                            </p>
+                            <ul class="list-unstyled text-start mb-3">
+                                <li><i class="fas fa-check text-success me-2"></i>创建新用户</li>
+                                <li><i class="fas fa-check text-success me-2"></i>编辑用户信息</li>
+                                <li><i class="fas fa-check text-success me-2"></i>重置用户密码</li>
+                                <li><i class="fas fa-check text-success me-2"></i>启用/禁用账户</li>
+                            </ul>
+                            <a href="/admin/users" class="btn btn-primary">
+                                <i class="fas fa-users me-2"></i>进入用户管理
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 mb-4">
+                    <div class="card admin-card feature-card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-server admin-icon text-success"></i>
+                            <h5 class="card-title">仓库管理</h5>
+                            <p class="card-text">
+                                管理目标私服仓库配置，添加、编辑、删除各种类型的镜像仓库。
+                            </p>
+                            <ul class="list-unstyled text-start mb-3">
+                                <li><i class="fas fa-check text-success me-2"></i>添加私服配置</li>
+                                <li><i class="fas fa-check text-success me-2"></i>编辑仓库信息</li>
+                                <li><i class="fas fa-check text-success me-2"></i>测试连接状态</li>
+                                <li><i class="fas fa-check text-success me-2"></i>删除废弃配置</li>
+                            </ul>
+                            <a href="/admin/registries" class="btn btn-success">
+                                <i class="fas fa-server me-2"></i>进入仓库管理
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 系统信息 -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-info-circle me-2"></i>系统信息
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>系统状态</h6>
+                                    <div id="system-status">
+                                        <p><strong>服务状态:</strong> <span class="badge bg-success">正常运行</span></p>
+                                        <p><strong>启动时间:</strong> <span id="system-uptime">-</span></p>
+                                        <p><strong>版本信息:</strong> v1.0.0</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>最近活动</h6>
+                                    <div id="recent-activities">
+                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                        加载中...
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 修改密码模态框 -->
+    <div class="modal fade" id="changePasswordModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">修改密码</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="changePasswordForm">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="oldPassword" class="form-label">当前密码</label>
+                            <input type="password" class="form-control" id="oldPassword" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newPassword" class="form-label">新密码</label>
+                            <input type="password" class="form-control" id="newPassword" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirmPassword" class="form-label">确认新密码</label>
+                            <input type="password" class="form-control" id="confirmPassword" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="submit" class="btn btn-primary">修改密码</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script>
+        // 简化的用户认证类，仅用于管理控制面板
+        class SimpleUserAuth {
+            constructor() {
+                this.currentUser = null;
+                this.init();
+            }
+
+            async init() {
+                await this.loadUserInfo();
+            }
+
+            async loadUserInfo() {
+                try {
+                    const response = await fetch('/api/user/info');
+                    if (response.ok) {
+                        this.currentUser = await response.json();
+                        this.updateUserUI();
+                    } else if (response.status === 401) {
+                        window.location.href = '/login';
+                        return;
+                    }
+                } catch (error) {
+                    console.error('获取用户信息失败:', error);
+                    window.location.href = '/login';
+                }
+            }
+
+            updateUserUI() {
+                if (!this.currentUser) return;
+
+                const displayNameElement = document.getElementById('user-display-name');
+                if (displayNameElement) {
+                    displayNameElement.textContent = this.currentUser.display_name || this.currentUser.username;
+                }
+            }
+
+            async logout() {
+                try {
+                    const response = await fetch('/api/logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    if (response.ok) {
+                        this.currentUser = null;
+                        window.location.href = '/login';
+                    } else {
+                        throw new Error('登出失败');
+                    }
+                } catch (error) {
+                    console.error('登出错误:', error);
+                    window.location.href = '/login';
+                }
+            }
+        }
+
+        // 管理面板专用脚本
+        class AdminDashboard {
+            constructor() {
+                this.init();
+            }
+
+            async init() {
+                await this.loadStatistics();
+                this.loadRecentActivities();
+                this.startPeriodicUpdates();
+            }
+
+            async loadStatistics() {
+                try {
+                    // 加载用户统计
+                    const usersResponse = await fetch('/api/admin/users');
+                    if (usersResponse.ok) {
+                        const users = await usersResponse.json();
+                        document.getElementById('total-users').textContent = users.length;
+                    }
+
+                    // 加载仓库统计
+                    const registriesResponse = await fetch('/api/admin/registries');
+                    if (registriesResponse.ok) {
+                        const registries = await registriesResponse.json();
+                        document.getElementById('total-registries').textContent = registries.length;
+                    }
+
+                    // 加载文件统计
+                    const filesResponse = await fetch('/api/files');
+                    if (filesResponse.ok) {
+                        const files = await filesResponse.json();
+                        document.getElementById('total-files').textContent = files.length;
+                    }
+
+                    // 活跃会话数（模拟）
+                    document.getElementById('active-sessions').textContent = '1';
+
+                } catch (error) {
+                    console.error('加载统计信息失败:', error);
+                }
+            }
+
+            loadRecentActivities() {
+                // 模拟最近活动
+                const activities = [
+                    '用户登录成功',
+                    '同步任务完成',
+                    '文件下载完成',
+                    '系统启动完成'
+                ];
+
+                const activitiesHtml = activities.map(activity => 
+                    `<div class="small text-muted mb-1">
+                        <i class="fas fa-circle text-success me-2" style="font-size: 0.5rem;"></i>
+                        ${activity}
+                    </div>`
+                ).join('');
+
+                document.getElementById('recent-activities').innerHTML = activitiesHtml;
+            }
+
+            startPeriodicUpdates() {
+                // 每30秒更新一次统计信息
+                setInterval(() => {
+                    this.loadStatistics();
+                }, 30000);
+            }
+        }
+
+        // 修改密码功能
+        function changePassword() {
+            const modal = new bootstrap.Modal(document.getElementById('changePasswordModal'));
+            modal.show();
+        }
+
+        // 登出功能
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                userAuth.logout();
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化用户认证
+            userAuth = new SimpleUserAuth();
+            
+            // 初始化管理面板
+            new AdminDashboard();
+
+            // 修改密码表单处理
+            document.getElementById('changePasswordForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const oldPassword = document.getElementById('oldPassword').value;
+                const newPassword = document.getElementById('newPassword').value;
+                const confirmPassword = document.getElementById('confirmPassword').value;
+                
+                if (newPassword !== confirmPassword) {
+                    alert('新密码和确认密码不一致！');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/user/change-password', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            old_password: oldPassword,
+                            new_password: newPassword
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok) {
+                        alert('密码修改成功！');
+                        bootstrap.Modal.getInstance(document.getElementById('changePasswordModal')).hide();
+                        document.getElementById('changePasswordForm').reset();
+                    } else {
+                        alert(result.error || '密码修改失败');
+                    }
+                } catch (error) {
+                    console.error('修改密码失败:', error);
+                    alert('修改密码失败，请重试');
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

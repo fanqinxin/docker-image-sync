@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  docker-sync:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: docker-image-sync:latest
+    container_name: docker-image-sync
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config:/app/config:ro
+      - sync_logs:/app/logs
+      - sync_downloads:/app/downloads
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      - SKOPEO_DISABLE_SSL_VERIFY=false
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    networks:
+      - docker-sync-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.docker-sync.rule=Host(`docker-sync.local`)"
+      - "traefik.http.services.docker-sync.loadbalancer.server.port=5000"
+
+  # 可选：Redis缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: docker-sync-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - sync_redis:/data
+    networks:
+      - docker-sync-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - with-redis
+
+  # 可选：Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: docker-sync-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - docker-sync-network
+    depends_on:
+      - docker-sync
+    restart: unless-stopped
+    profiles:
+      - with-nginx
+
+networks:
+  docker-sync-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  sync_logs:
+    driver: local
+  sync_downloads:
+    driver: local
+  sync_redis:
+    driver: local 

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>错误 - Docker镜像同步工具</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .error-container {
+            min-height: 80vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .error-content {
+            text-align: center;
+            max-width: 500px;
+        }
+        .error-code {
+            font-size: 4rem;
+            font-weight: bold;
+            color: #dc3545;
+            margin-bottom: 1rem;
+        }
+        .error-message {
+            font-size: 1.2rem;
+            color: #6c757d;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar navbar-dark bg-primary mb-4">
+            <div class="container">
+                <span class="navbar-brand">🐳 Docker镜像同步工具</span>
+            </div>
+        </nav>
+
+        <div class="error-container">
+            <div class="error-content">
+                <div class="error-code">{{ error_code or 500 }}</div>
+                <div class="error-message">
+                    {{ error_message or '服务器内部错误' }}
+                </div>
+                
+                {% if error_code == 403 %}
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    您没有足够的权限访问此页面。请联系管理员获取相应权限。
+                </div>
+                {% endif %}
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                    <a href="/" class="btn btn-primary">
+                        <i class="fas fa-home me-2"></i>返回首页
+                    </a>
+                    <button class="btn btn-secondary" onclick="history.back()">
+                        <i class="fas fa-arrow-left me-2"></i>返回上页
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+</body>
+</html> 

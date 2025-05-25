@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: docker-sync
+  labels:
+    name: docker-sync
+    purpose: docker-image-sync-tool 

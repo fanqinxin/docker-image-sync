@@ -1,0 +1,24 @@
+users:
+  admin:
+    username: admin
+    # 密码哈希 - 请使用 bcrypt 生成
+    # 默认密码: admin123，请在生产环境中修改
+    password_hash: "$2b$12$example.hash.please.change.in.production"
+    display_name: "管理员"
+    role: "admin"
+    email: "admin@example.com"
+    active: true
+    created_at: "2024-01-01T00:00:00Z"
+    last_login: null
+
+session:
+  # 会话密钥 - 请生成32字节的随机密钥
+  # 生成方法: python -c "import secrets; print(secrets.token_hex(32))"
+  secret_key: "your-secret-key-change-in-production"
+  session_timeout: 3600
+  remember_me_duration: 604800
+
+security:
+  max_login_attempts: 5
+  lockout_duration: 300
+  password_min_length: 6 

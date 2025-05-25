@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docker-sync-config
+  namespace: docker-sync
+  labels:
+    app: docker-sync
+data:
+  FLASK_ENV: "production"
+  PYTHONUNBUFFERED: "1"
+  SKOPEO_DISABLE_SSL_VERIFY: "false"
+  LOG_LEVEL: "INFO"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docker-sync-registries
+  namespace: docker-sync
+  labels:
+    app: docker-sync
+data:
+  registries.yaml: |
+    registries:
+      source:
+        url: "docker.io"
+        username: ""
+        password: ""
+        namespace: "library"
+        
+      target:
+        url: "your-registry.com"
+        username: "your-username"
+        password: "your-password"
+        namespace: "your-namespace"
+        
+    sync_config:
+      batch_size: 5
+      retry_count: 3
+      timeout: 300
+      parallel_downloads: 2
+      
+    image_filters:
+      include_patterns:
+        - "nginx:*"
+        - "redis:*"
+        - "mysql:*"
+      exclude_patterns:
+        - "*:debug"
+        - "*:test"
+        
+    logging:
+      level: "INFO"
+      format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+      file: "/app/logs/sync.log"
+      max_size: "100MB"
+      backup_count: 5 

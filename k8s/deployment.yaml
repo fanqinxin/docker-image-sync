@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-sync
+  namespace: docker-sync
+  labels:
+    app: docker-sync
+    version: v1.0.0
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: docker-sync
+  template:
+    metadata:
+      labels:
+        app: docker-sync
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: docker-sync
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: docker-sync
+        image: docker-image-sync:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
+          name: http
+          protocol: TCP
+        env:
+        - name: FLASK_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: docker-sync-config
+              key: FLASK_ENV
+        - name: PYTHONUNBUFFERED
+          valueFrom:
+            configMapKeyRef:
+              name: docker-sync-config
+              key: PYTHONUNBUFFERED
+        - name: SKOPEO_DISABLE_SSL_VERIFY
+          valueFrom:
+            configMapKeyRef:
+              name: docker-sync-config
+              key: SKOPEO_DISABLE_SSL_VERIFY
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: docker-sync-config
+              key: LOG_LEVEL
+        volumeMounts:
+        - name: config-registries
+          mountPath: /app/config/registries.yaml
+          subPath: registries.yaml
+          readOnly: true
+        - name: config-users
+          mountPath: /app/config/users.yaml
+          subPath: users.yaml
+          readOnly: true
+        - name: logs
+          mountPath: /app/logs
+        - name: downloads
+          mountPath: /app/downloads
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: config-registries
+        configMap:
+          name: docker-sync-registries
+          items:
+          - key: registries.yaml
+            path: registries.yaml
+      - name: config-users
+        secret:
+          secretName: docker-sync-secret
+          items:
+          - key: users.yaml
+            path: users.yaml
+      - name: logs
+        persistentVolumeClaim:
+          claimName: docker-sync-logs
+      - name: downloads
+        persistentVolumeClaim:
+          claimName: docker-sync-downloads
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30 

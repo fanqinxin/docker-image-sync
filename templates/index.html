@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docker镜像同步工具</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- 导航栏 -->
+        <nav class="navbar navbar-dark bg-primary mb-4">
+            <div class="container">
+                <span class="navbar-brand">🐳 Docker镜像同步工具</span>
+                <div class="navbar-nav-right d-flex align-items-center">
+                    <!-- 用户信息 -->
+                    <div class="user-info me-3">
+                        <span class="text-white me-2">
+                            <i class="fas fa-user"></i>
+                            <span id="user-display-name">加载中...</span>
+                        </span>
+                        <span class="badge bg-success me-2" id="user-role">用户</span>
+                    </div>
+                    
+                    <!-- 连接状态 -->
+                    <span class="me-3">
+                        <span id="connection-status" class="badge bg-secondary">连接中...</span>
+                    </span>
+                    
+                    <!-- 用户菜单 -->
+                    <div class="dropdown">
+                        <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="userMenuDropdown" data-bs-toggle="dropdown">
+                            <i class="fas fa-cog"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <span class="dropdown-item-text">
+                                    <small class="text-muted">登录时间:</small><br>
+                                    <small id="login-time">-</small>
+                                </span>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <!-- 管理员功能入口 -->
+                            <li id="admin-menu-item" style="display: none;">
+                                <a class="dropdown-item" href="/admin">
+                                    <i class="fas fa-user-shield me-2"></i>管理控制面板
+                                </a>
+                            </li>
+                            <li id="admin-divider" style="display: none;"><hr class="dropdown-divider"></li>
+                            <li>
+                                <button class="dropdown-item" type="button" onclick="changePassword()">
+                                    <i class="fas fa-key me-2"></i>修改密码
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item text-danger" type="button" onclick="logout()">
+                                    <i class="fas fa-sign-out-alt me-2"></i>退出登录
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container">
+            <div class="row">
+                <!-- 上方配置面板 -->
+                <div class="col-12">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5><i class="fas fa-cog"></i> 同步配置</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <!-- 配置项区域 -->
+                                <div class="col-md-8">
+                                    <form id="sync-form">
+                                        <!-- 镜像列表 -->
+                                        <div class="form-group">
+                                            <label for="images-input">
+                                                <i class="fas fa-images"></i> 镜像列表
+                                                <small class="text-muted">(每行一个镜像)</small>
+                                            </label>
+                                            <textarea id="images-input" class="form-control images-textarea" rows="10" 
+                                                      placeholder="例如：&#10;nginx:latest&#10;redis:6.2&#10;mysql:8.0&#10;ubuntu:20.04&#10;&#10;# 可以添加注释行&#10;# 支持多种镜像格式"></textarea>
+                                            <small class="form-text text-muted">
+                                                支持格式：镜像名:标签 或 完整镜像地址，支持#注释行
+                                            </small>
+                                        </div>
+
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <!-- 目标私服 -->
+                                                <div class="form-group">
+                                                    <label for="target-registry">
+                                                        <i class="fas fa-server"></i> 目标私服
+                                                    </label>
+                                                    <select id="target-registry" class="form-control" required>
+                                                        <option value="">请选择私服...</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <!-- 目标项目/命名空间 -->
+                                                <div class="form-group">
+                                                    <label for="target-project">
+                                                        <i class="fas fa-folder"></i> 目标项目/命名空间
+                                                        <span class="help-icon" title="指定镜像推送到的项目或命名空间，留空使用配置文件默认值" onclick="showProjectHelp()">❓</span>
+                                                    </label>
+                                                    <input type="text" id="target-project" class="form-control" 
+                                                           placeholder="例如：library、myproject、dev-images">
+                                                    <small class="form-text text-muted">
+                                                        镜像将推送到指定项目下，留空使用配置文件中的默认值
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <!-- 替换级别 -->
+                                                <div class="form-group">
+                                                    <label for="replace-level">
+                                                        <i class="fas fa-exchange-alt"></i> 替换级别
+                                                        <span class="help-icon" title="点击查看详细说明" onclick="showReplaceLevelHelp()">❓</span>
+                                                    </label>
+                                                    <select id="replace-level" class="form-control" title="选择镜像路径的替换级别">
+                                                        <option value="all" title="替换所有级：'a/b/c/d/img' -> 'ns/img'">替换所有级</option>
+                                                        <option value="none" title="无替换：'a/b/c/d/img' -> 'ns/a/b/c/d/img'">无替换</option>
+                                                        <option value="1" selected title="替换1级：'a/b/c/d/img' -> 'ns/b/c/d/img'">替换1级(默认)</option>
+                                                        <option value="2" title="替换2级：'a/b/c/d/img' -> 'ns/c/d/img'">替换2级</option>
+                                                        <option value="3" title="替换3级：'a/b/c/d/img' -> 'ns/d/img'">替换3级</option>
+                                                    </select>
+                                                    <small class="form-text text-muted">
+                                                        选择镜像路径的替换级别，鼠标悬浮查看规则说明
+                                                    </small>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <!-- 项目预览 -->
+                                                <div class="form-group">
+                                                    <label class="text-muted">
+                                                        <i class="fas fa-eye"></i> 目标路径预览
+                                                    </label>
+                                                    <div id="target-preview" class="form-control-plaintext bg-light p-2 rounded text-muted small">
+                                                        选择私服和项目后显示目标路径预览...
+                                                    </div>
+                                                    <small class="form-text text-muted">
+                                                        实时预览镜像将推送到的完整路径
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 私有镜像认证 -->
+                                        <div class="form-group">
+                                            <div class="custom-control custom-checkbox">
+                                                <input type="checkbox" class="custom-control-input" id="use-private-auth" onchange="togglePrivateAuth()">
+                                                <label class="custom-control-label" for="use-private-auth">
+                                                    <i class="fas fa-lock"></i> 源镜像需要认证（私有仓库）
+                                                </label>
+                                            </div>
+                                            <small class="form-text text-muted">勾选此项可为源镜像仓库提供认证信息</small>
+                                        </div>
+
+                                        <!-- 认证信息输入框（默认隐藏） -->
+                                        <div id="private-auth-section" class="card border-info" style="display: none;">
+                                            <div class="card-header bg-light">
+                                                <small><i class="fas fa-key"></i> 源仓库认证信息</small>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <div class="form-group mb-2">
+                                                            <label for="source-username" class="small">用户名</label>
+                                                            <input type="text" id="source-username" class="form-control form-control-sm" placeholder="输入用户名">
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <div class="form-group mb-2">
+                                                            <label for="source-password" class="small">密码/Token</label>
+                                                            <input type="password" id="source-password" class="form-control form-control-sm" placeholder="输入密码或Token">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <small class="text-info">
+                                                    <i class="fas fa-info-circle"></i>
+                                                    此认证信息将应用于所有源镜像的拉取，适用于同一仓库的批量同步
+                                                </small>
+                                            </div>
+                                        </div>
+
+                                        <!-- 网络代理配置 -->
+                                        <div class="form-group">
+                                            <div class="custom-control custom-checkbox">
+                                                <input type="checkbox" class="custom-control-input" id="use-proxy" onchange="toggleProxy()">
+                                                <label class="custom-control-label" for="use-proxy">
+                                                    <i class="fas fa-globe"></i> 使用网络代理（解决DockerHub访问问题）
+                                                </label>
+                                            </div>
+                                            <small class="form-text text-muted">勾选此项通过代理服务器拉取镜像，适用于网络受限环境</small>
+                                        </div>
+
+                                        <!-- 代理配置输入框（默认隐藏） -->
+                                        <div id="proxy-section" class="card border-warning" style="display: none;">
+                                            <div class="card-header bg-light">
+                                                <small><i class="fas fa-network-wired"></i> 代理服务器配置</small>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <div class="form-group mb-2">
+                                                            <label for="proxy-http" class="small">HTTP代理</label>
+                                                            <input type="text" id="proxy-http" class="form-control form-control-sm" placeholder="http://proxy.company.com:8080">
+                                                            <small class="text-muted">用于HTTP请求的代理地址</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <div class="form-group mb-2">
+                                                            <label for="proxy-https" class="small">HTTPS代理</label>
+                                                            <input type="text" id="proxy-https" class="form-control form-control-sm" placeholder="http://proxy.company.com:8080">
+                                                            <small class="text-muted">用于HTTPS请求的代理地址</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group mb-2">
+                                                    <label for="proxy-no-proxy" class="small">不使用代理的地址（可选）</label>
+                                                    <input type="text" id="proxy-no-proxy" class="form-control form-control-sm" placeholder="localhost,127.0.0.1,*.local">
+                                                    <small class="text-muted">逗号分隔的不需要代理的地址或域名</small>
+                                                </div>
+                                                <div class="alert alert-warning mb-0">
+                                                    <small>
+                                                        <i class="fas fa-exclamation-triangle"></i>
+                                                        <strong>提示：</strong>通常HTTP和HTTPS代理地址相同。如果只填写HTTP代理，HTTPS也会自动使用相同配置。
+                                                    </small>
+                                                </div>
+                                                <div class="alert alert-info mb-0 mt-2">
+                                                    <small>
+                                                        <i class="fas fa-lightbulb"></i>
+                                                        <strong>智能排除：</strong>系统会自动将目标私服地址添加到代理排除列表，确保私服访问不受影响。
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 操作按钮 -->
+                                        <div class="form-group">
+                                            <div class="btn-group-custom">
+                                                <button type="submit" id="start-sync" class="btn btn-primary btn-lg">
+                                                    <i class="fas fa-play"></i> 开始同步
+                                                </button>
+                                                <button type="button" id="terminate-sync" class="btn btn-danger btn-lg" style="display: none;">
+                                                    <i class="fas fa-stop"></i> 终止同步
+                                                </button>
+                                                <button type="button" id="clear-images" class="btn btn-outline-secondary btn-lg" onclick="clearImagesList()">
+                                                    <i class="fas fa-trash"></i> 清空列表
+                                                </button>
+                                                <button type="button" class="btn btn-outline-info btn-lg" onclick="showReplaceLevelHelp()">
+                                                    <i class="fas fa-question-circle"></i> 帮助说明
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <!-- 任务状态区域 -->
+                                <div class="col-md-4">
+                                    <div id="task-status" class="mt-3" style="display: none;">
+                                        <div class="card border-info">
+                                            <div class="card-header bg-info text-white">
+                                                <small><i class="fas fa-tasks"></i> 当前任务状态</small>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="progress mb-2">
+                                                    <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                                         role="progressbar" style="width: 0%"></div>
+                                                </div>
+                                                <div id="progress-text" class="text-center small"></div>
+                                                <div id="current-image" class="text-muted small mt-1"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- 下方日志面板 -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5><i class="fas fa-terminal"></i> 同步日志</h5>
+                            <button id="clear-logs" class="btn btn-sm btn-outline-secondary">
+                                <i class="fas fa-trash"></i> 清空日志
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="log-container" class="log-container">
+                                <div class="text-center text-muted p-4">
+                                    <i class="fas fa-info-circle"></i>
+                                    等待开始同步任务...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 底部信息 -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6><i class="fas fa-info-circle"></i> 使用说明</h6>
+                                    <ul class="small mb-0">
+                                        <li>在上方配置面板输入要同步的镜像列表，每行一个</li>
+                                        <li>支持使用#添加注释行，方便分组和说明</li>
+                                        <li><strong>目标项目：</strong>可自定义指定项目/命名空间，留空使用配置文件默认值</li>
+                                        <li><strong>私有镜像：</strong>勾选"源镜像需要认证"并填写认证信息</li>
+                                        <li><strong>网络代理：</strong>勾选"使用网络代理"解决DockerHub访问问题</li>
+                                        <li><strong>本地文件：</strong>选择"本地文件"可导出tar包供其他环境使用</li>
+                                        <li>选择目标私服和合适的替换级别</li>
+                                        <li>点击"开始同步"，实时查看同步进度和日志</li>
+                                        <li>可随时点击"终止同步"停止正在进行的任务</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6><i class="fas fa-cogs"></i> 系统要求</h6>
+                                    <ul class="small mb-0">
+                                        <li>需要安装 <code>skopeo</code> 工具</li>
+                                        <li>确保网络可以访问源镜像仓库和目标私服</li>
+                                        <li>私服配置文件位于 <code>config/registries.yaml</code></li>
+                                        <li>支持 Harbor、阿里云ACR、Nexus 等私服</li>
+                                        <li><strong>私有镜像：</strong>支持用户名/密码和Token认证</li>
+                                        <li><strong>网络代理：</strong>支持HTTP/HTTPS代理突破网络限制</li>
+                                        <li><strong>本地文件：</strong>导出的tar包可用<code>docker load</code>导入</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 文件管理面板 -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5><i class="fas fa-file-archive"></i> 导出文件管理</h5>
+                            <div class="btn-group">
+                                <button id="refresh-files" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-sync-alt"></i> 刷新
+                                </button>
+                                <button id="cleanup-files" class="btn btn-sm btn-outline-warning">
+                                    <i class="fas fa-broom"></i> 清理旧文件
+                                </button>
+                                <button id="auto-cleanup-files" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-clock"></i> 自动清理
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="files-container">
+                                <div class="text-center text-muted p-4">
+                                    <i class="fas fa-folder-open"></i>
+                                    正在加载文件列表...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框 -->
+    <div class="modal fade" id="errorModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">错误</h5>
+                    <button type="button" class="close text-white" data-dismiss="modal">
+                        <span>&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p id="error-message"></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 替换级别帮助模态框 -->
+    <div class="modal fade" id="replaceLevelHelpModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-info-circle"></i> 替换级别说明
+                    </h5>
+                    <button type="button" class="close text-white" data-dismiss="modal">
+                        <span>&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong>示例说明：</strong>假设源镜像为 <code>a/b/c/d/img</code>，目标命名空间为 <code>ns</code>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>替换级别</th>
+                                    <th>说明</th>
+                                    <th>转换结果</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="table-warning">
+                                    <td><strong>替换所有级</strong></td>
+                                    <td>只保留镜像名，去除所有路径</td>
+                                    <td><code>ns/img</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>无替换</strong></td>
+                                    <td>保留完整的原始路径</td>
+                                    <td><code>ns/a/b/c/d/img</code></td>
+                                </tr>
+                                <tr class="table-success">
+                                    <td><strong>替换1级 (默认)</strong></td>
+                                    <td>去除第1级路径</td>
+                                    <td><code>ns/b/c/d/img</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>替换2级</strong></td>
+                                    <td>去除前2级路径</td>
+                                    <td><code>ns/c/d/img</code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>替换3级</strong></td>
+                                    <td>去除前3级路径</td>
+                                    <td><code>ns/d/img</code></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="alert alert-secondary">
+                        <h6><i class="fas fa-lightbulb"></i> 使用建议：</h6>
+                        <ul class="mb-0">
+                            <li><strong>推荐使用"替换1级"</strong>：适合大多数场景，去除registry地址保留组织路径</li>
+                            <li><strong>"替换所有级"</strong>：适合只需要镜像名的简单场景</li>
+                            <li><strong>"无替换"</strong>：适合需要保持完整路径结构的场景</li>
+                            <li>如果源镜像路径级别不足，会自动只保留镜像名</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    
+    <!-- 项目配置相关JavaScript -->
+    <script>
+        // 目标项目帮助函数
+        function showProjectHelp() {
+            let helpContent = `
+                <div class="modal fade" id="projectHelpModal" tabindex="-1">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header bg-info text-white">
+                                <h5 class="modal-title">
+                                    <i class="fas fa-folder"></i> 目标项目/命名空间说明
+                                </h5>
+                                <button type="button" class="close text-white" data-dismiss="modal">
+                                    <span>&times;</span>
+                                </button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-info">
+                                    <strong>功能说明：</strong>指定镜像推送到目标私服的项目或命名空间
+                                </div>
+                                
+                                <h6><i class="fas fa-cogs"></i> 使用方式：</h6>
+                                <ul>
+                                    <li><strong>留空：</strong>使用配置文件中的默认项目/命名空间</li>
+                                    <li><strong>自定义输入：</strong>指定特定的项目，如 <code>library</code>、<code>myproject</code>、<code>dev-images</code></li>
+                                </ul>
+                                
+                                <h6><i class="fas fa-server"></i> 不同私服类型示例：</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>私服类型</th>
+                                                <th>项目示例</th>
+                                                <th>最终镜像路径</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td><strong>Harbor</strong></td>
+                                                <td><code>library</code></td>
+                                                <td><code>harbor.example.com/library/nginx:latest</code></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>阿里云ACR</strong></td>
+                                                <td><code>mynamespace</code></td>
+                                                <td><code>registry.cn-hangzhou.aliyuncs.com/mynamespace/nginx:latest</code></td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Nexus</strong></td>
+                                                <td><code>docker-hosted</code></td>
+                                                <td><code>nexus.example.com:8081/docker-hosted/nginx:latest</code></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                
+                                <div class="alert alert-warning">
+                                    <h6><i class="fas fa-exclamation-triangle"></i> 注意事项：</h6>
+                                    <ul class="mb-0">
+                                        <li>确保指定的项目/命名空间在目标私服中已存在</li>
+                                        <li>不同私服的项目/命名空间命名规则可能不同</li>
+                                        <li>如果项目不存在，同步可能会失败</li>
+                                        <li>建议提前在私服中创建所需的项目</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-dismiss="modal">关闭</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 如果模态框已存在，先删除
+            const existingModal = document.getElementById('projectHelpModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // 添加模态框到页面
+            document.body.insertAdjacentHTML('beforeend', helpContent);
+            
+            // 显示模态框
+            $('#projectHelpModal').modal('show');
+        }
+        
+        // 更新目标路径预览
+        function updateTargetPreview() {
+            const registrySelect = document.getElementById('target-registry');
+            const projectInput = document.getElementById('target-project');
+            const previewDiv = document.getElementById('target-preview');
+            
+            if (!registrySelect || !projectInput || !previewDiv) return;
+            
+            const selectedRegistry = registrySelect.value;
+            const projectValue = projectInput.value.trim();
+            
+            if (!selectedRegistry) {
+                previewDiv.textContent = '请先选择目标私服...';
+                previewDiv.className = 'form-control-plaintext bg-light p-2 rounded text-muted small';
+                return;
+            }
+            
+            // 获取选中私服的显示名称
+            const selectedOption = registrySelect.options[registrySelect.selectedIndex];
+            const registryName = selectedOption ? selectedOption.textContent : selectedRegistry;
+            
+            let previewText = '';
+            let previewClass = 'form-control-plaintext bg-light p-2 rounded small';
+            
+            if (projectValue) {
+                previewText = `${registryName}/${projectValue}/镜像名:标签`;
+                previewClass += ' text-success';
+            } else {
+                previewText = `${registryName}/[配置文件默认项目]/镜像名:标签`;
+                previewClass += ' text-info';
+            }
+            
+            previewDiv.textContent = previewText;
+            previewDiv.className = previewClass;
+        }
+        
+        // 页面加载完成后绑定事件
+        document.addEventListener('DOMContentLoaded', function() {
+            // 绑定目标私服和项目输入框的change事件
+            const registrySelect = document.getElementById('target-registry');
+            const projectInput = document.getElementById('target-project');
+            
+            if (registrySelect) {
+                registrySelect.addEventListener('change', updateTargetPreview);
+            }
+            
+            if (projectInput) {
+                projectInput.addEventListener('input', updateTargetPreview);
+            }
+            
+            // 初始化预览
+            updateTargetPreview();
+        });
+    </script>
+</body>
+</html> 

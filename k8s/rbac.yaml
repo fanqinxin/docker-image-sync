@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: docker-sync
+  namespace: docker-sync
+  labels:
+    app: docker-sync
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: docker-sync-role
+  namespace: docker-sync
+  labels:
+    app: docker-sync
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: docker-sync-rolebinding
+  namespace: docker-sync
+  labels:
+    app: docker-sync
+subjects:
+- kind: ServiceAccount
+  name: docker-sync
+  namespace: docker-sync
+roleRef:
+  kind: Role
+  name: docker-sync-role
+  apiGroup: rbac.authorization.k8s.io 
