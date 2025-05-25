@@ -387,15 +387,13 @@
             <div class="modal-content">
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title">错误</h5>
-                    <button type="button" class="close text-white" data-dismiss="modal">
-                        <span>&times;</span>
-                    </button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p id="error-message"></p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
             </div>
         </div>
@@ -409,9 +407,7 @@
                     <h5 class="modal-title">
                         <i class="fas fa-info-circle"></i> 替换级别说明
                     </h5>
-                    <button type="button" class="close text-white" data-dismiss="modal">
-                        <span>&times;</span>
-                    </button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info">
@@ -468,7 +464,7 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
             </div>
         </div>
@@ -491,9 +487,7 @@
                                 <h5 class="modal-title">
                                     <i class="fas fa-folder"></i> 目标项目/命名空间说明
                                 </h5>
-                                <button type="button" class="close text-white" data-dismiss="modal">
-                                    <span>&times;</span>
-                                </button>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
                             <div class="modal-body">
                                 <div class="alert alert-info">
@@ -547,7 +541,7 @@
                                 </div>
                             </div>
                             <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-dismiss="modal">关闭</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                             </div>
                         </div>
                     </div>
@@ -564,7 +558,8 @@
             document.body.insertAdjacentHTML('beforeend', helpContent);
             
             // 显示模态框
-            $('#projectHelpModal').modal('show');
+            const modal = new bootstrap.Modal(document.getElementById('projectHelpModal'));
+            modal.show();
         }
         
         // 更新目标路径预览
