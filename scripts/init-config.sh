@@ -131,38 +131,92 @@ init_registries_config() {
         fi
     fi
     
-    if [[ ! -f "$example_file" ]]; then
-        log_error "示例文件 $example_file 不存在"
+    # 检查是否有生成脚本
+    if [[ -f "generate_registries_config.py" ]]; then
+        log_info "使用配置生成脚本初始化仓库配置..."
+        
+        # 使用Python脚本生成配置
+        if [[ -f "$config_file" ]]; then
+            $PYTHON_CMD generate_registries_config.py --backup -o "$config_file"
+        else
+            $PYTHON_CMD generate_registries_config.py -o "$config_file"
+        fi
+        
+        log_info "已生成默认仓库配置"
+        log_warn "请编辑 $config_file 文件，修改为您的实际仓库信息"
+        
+    elif [[ -f "$example_file" ]]; then
+        log_info "从示例文件初始化仓库配置..."
+        
+        # 复制示例文件
+        cp "$example_file" "$config_file"
+        
+        echo ""
+        log_info "配置主要仓库信息"
+        read -p "是否配置Harbor私服? (y/N): " config_harbor
+        
+        if [[ "$config_harbor" =~ ^[Yy] ]]; then
+            read -p "Harbor地址 (例如: harbor.example.com): " harbor_url
+            read -p "Harbor用户名: " harbor_username
+            read -s -p "Harbor密码: " harbor_password
+            echo ""
+            read -p "Harbor项目名 (默认: library): " harbor_project
+            harbor_project=${harbor_project:-library}
+            
+            if [[ -n "$harbor_url" && -n "$harbor_username" && -n "$harbor_password" ]]; then
+                # 替换Harbor配置
+                sed -i "s|url: harbor.example.com|url: $harbor_url|" "$config_file"
+                sed -i "s|username: admin|username: $harbor_username|" "$config_file"
+                sed -i "s|password: your-password|password: $harbor_password|" "$config_file"
+                sed -i "s|project: library|project: $harbor_project|" "$config_file"
+                
+                log_info "Harbor配置完成"
+            fi
+        fi
+        
+        echo ""
+        read -p "是否配置阿里云ACR? (y/N): " config_acr
+        
+        if [[ "$config_acr" =~ ^[Yy] ]]; then
+            echo "阿里云ACR地域选择:"
+            echo "1. 华东1（杭州）: registry.cn-hangzhou.aliyuncs.com"
+            echo "2. 华北2（北京）: registry.cn-beijing.aliyuncs.com"
+            echo "3. 华东2（上海）: registry.cn-shanghai.aliyuncs.com"
+            echo "4. 自定义地址"
+            read -p "选择地域 (1-4): " acr_region
+            
+            case $acr_region in
+                1) acr_url="registry.cn-hangzhou.aliyuncs.com" ;;
+                2) acr_url="registry.cn-beijing.aliyuncs.com" ;;
+                3) acr_url="registry.cn-shanghai.aliyuncs.com" ;;
+                4) read -p "请输入ACR地址: " acr_url ;;
+                *) acr_url="registry.cn-hangzhou.aliyuncs.com" ;;
+            esac
+            
+            read -p "ACR用户名: " acr_username
+            read -s -p "ACR密码: " acr_password
+            echo ""
+            read -p "ACR命名空间: " acr_namespace
+            
+            if [[ -n "$acr_url" && -n "$acr_username" && -n "$acr_password" && -n "$acr_namespace" ]]; then
+                # 替换ACR配置
+                sed -i "s|registry.cn-hangzhou.aliyuncs.com|$acr_url|" "$config_file"
+                sed -i "0,/username: your-username/{s|username: your-username|username: $acr_username|}" "$config_file"
+                sed -i "0,/password: your-password/{s|password: your-password|password: $acr_password|}" "$config_file"
+                sed -i "0,/namespace: your-namespace/{s|namespace: your-namespace|namespace: $acr_namespace|}" "$config_file"
+                
+                log_info "阿里云ACR配置完成"
+            fi
+        fi
+        
+        log_info "仓库配置初始化完成: $config_file"
+        log_warn "如需配置其他仓库，请手动编辑配置文件"
+        
+    else
+        log_error "示例文件 $example_file 不存在，且未找到生成脚本"
+        log_info "请手动创建配置文件或使用 generate_registries_config.py 脚本"
         return 1
     fi
-    
-    log_info "初始化仓库配置..."
-    
-    # 复制示例文件
-    cp "$example_file" "$config_file"
-    
-    echo ""
-    log_info "配置目标仓库"
-    read -p "目标仓库地址 (例如: harbor.example.com): " target_url
-    read -p "目标仓库用户名: " target_username
-    read -s -p "目标仓库密码: " target_password
-    echo ""
-    read -p "目标命名空间/项目 (默认: library): " target_namespace
-    target_namespace=${target_namespace:-library}
-    
-    if [[ -n "$target_url" && -n "$target_username" && -n "$target_password" ]]; then
-        # 替换配置文件中的占位符
-        sed -i "s/your-registry.com/$target_url/" "$config_file"
-        sed -i "s/your-username/$target_username/" "$config_file"
-        sed -i "s/your-password/$target_password/" "$config_file"
-        sed -i "s/your-namespace/$target_namespace/" "$config_file"
-        
-        log_info "目标仓库配置完成"
-    else
-        log_warn "目标仓库信息不完整，请手动编辑 $config_file"
-    fi
-    
-    log_info "仓库配置初始化完成: $config_file"
 }
 
 # 初始化Kubernetes配置

@@ -315,34 +315,97 @@ security:
 
 ```yaml
 registries:
-  # 源仓库配置（通常是公共仓库）
-  source:
-    url: "docker.io"
-    username: ""           # 可选：私有仓库用户名
-    password: ""           # 可选：私有仓库密码
-    namespace: "library"   # 默认命名空间
+  # Harbor私服示例
+  - name: Harbor私服
+    type: harbor
+    url: harbor.example.com
+    username: admin
+    password: Harbor12345
+    project: library
+    description: Harbor私有仓库，支持多项目管理
     
-  # 目标仓库配置（您的私有仓库）
-  target:
-    url: "harbor.example.com"
-    username: "admin"
-    password: "Harbor12345"
-    namespace: "library"
+  # 阿里云ACR示例
+  - name: 阿里云ACR
+    type: acr
+    url: registry.cn-hangzhou.aliyuncs.com
+    username: your-username
+    password: your-password
+    namespace: your-namespace
+    description: 阿里云容器镜像服务，支持多地域部署
+    
+  # 本地文件导出
+  - name: 本地文件
+    type: local_file
+    url: downloads
+    description: 导出镜像为tar包文件，可用于docker load导入
 ```
 
-#### 同步配置
 
+
+#### 支持的私服类型配置
+
+##### 完整配置示例
 ```yaml
+registries:
+  # Harbor私服
+  - name: Harbor私服
+    type: harbor
+    url: harbor.example.com
+    username: admin
+    password: Harbor12345
+    project: library         # Harbor项目名
+    description: Harbor私有仓库
+    
+  # 阿里云ACR
+  - name: 阿里云ACR
+    type: acr
+    url: registry.cn-hangzhou.aliyuncs.com
+    username: your-username
+    password: your-password
+    namespace: your-namespace  # ACR命名空间
+    description: 阿里云容器镜像服务
+    
+  # 华为云SWR
+  - name: 华为云SWR
+    type: swr
+    url: swr.cn-north-4.myhuaweicloud.com
+    username: cn-north-4@your-access-key
+    password: your-secret-key
+    namespace: your-namespace
+    description: 华为云容器镜像服务
+    
+  # 腾讯云TCR
+  - name: 腾讯云TCR
+    type: tcr
+    url: your-instance.tencentcloudcr.com
+    username: your-username
+    password: your-password
+    namespace: your-namespace
+    description: 腾讯云容器镜像服务
+    
+  # Nexus Repository
+  - name: Nexus私服
+    type: nexus
+    url: nexus.example.com:8082
+    username: nexus-user
+    password: nexus-password
+    repository: docker-hosted  # Nexus仓库名
+    description: Nexus Repository Manager
+    
+  # 本地文件导出
+  - name: 本地文件
+    type: local_file
+    url: downloads
+    description: 导出镜像为tar包文件，可用于docker load导入
+
+# 同步配置
 sync_config:
   batch_size: 5              # 批量处理大小
   retry_count: 3             # 失败重试次数
   timeout: 300               # 超时时间（秒）
   parallel_downloads: 2      # 并行下载数量
-```
 
-#### 镜像过滤器配置
-
-```yaml
+# 镜像过滤器配置
 image_filters:
   # 包含模式：只同步匹配的镜像
   include_patterns:
@@ -359,79 +422,14 @@ image_filters:
     - "*:experimental"       # 排除实验版本
     - "*:nightly"            # 排除每日构建
     - "*:rc*"                # 排除候选版本
-```
 
-#### 日志配置
-
-```yaml
+# 日志配置
 logging:
   level: "INFO"              # 日志级别：DEBUG, INFO, WARNING, ERROR
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   file: "/app/logs/sync.log" # 日志文件路径
   max_size: "100MB"          # 单个日志文件最大大小
   backup_count: 5            # 保留的日志文件数量
-```
-
-#### 支持的私服类型配置
-
-##### 1. Harbor私服
-```yaml
-harbor_example:
-  name: "Harbor私服"
-  type: "harbor"
-  url: "harbor.example.com"
-  username: "admin"
-  password: "Harbor12345"
-  project: "library"         # Harbor项目名
-  description: "Harbor私有仓库"
-```
-
-##### 2. 阿里云ACR
-```yaml
-aliyun_acr_example:
-  name: "阿里云ACR"
-  type: "acr"
-  url: "registry.cn-hangzhou.aliyuncs.com"
-  username: "your-username"
-  password: "your-password"
-  namespace: "your-namespace"  # ACR命名空间
-  description: "阿里云容器镜像服务"
-```
-
-##### 3. Nexus Repository
-```yaml
-nexus_example:
-  name: "Nexus私服"
-  type: "nexus"
-  url: "nexus.example.com:8082"
-  username: "nexus-user"
-  password: "nexus-password"
-  repository: "docker-hosted"  # Nexus仓库名
-  description: "Nexus Repository Manager"
-```
-
-##### 4. 华为云SWR
-```yaml
-huawei_swr_example:
-  name: "华为云SWR"
-  type: "swr"
-  url: "swr.cn-north-4.myhuaweicloud.com"
-  username: "your-username"
-  password: "your-password"
-  namespace: "your-namespace"
-  description: "华为云容器镜像服务"
-```
-
-##### 5. 腾讯云TCR
-```yaml
-tencent_tcr_example:
-  name: "腾讯云TCR"
-  type: "tcr"
-  url: "your-instance.tencentcloudcr.com"
-  username: "your-username"
-  password: "your-password"
-  namespace: "your-namespace"
-  description: "腾讯云容器镜像服务"
 ```
 
 #### 镜像过滤器详细说明

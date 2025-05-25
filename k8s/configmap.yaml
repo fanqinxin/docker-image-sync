@@ -21,17 +21,56 @@ metadata:
 data:
   registries.yaml: |
     registries:
-      source:
-        url: "docker.io"
-        username: ""
-        password: ""
-        namespace: "library"
+      # Harbor私服示例
+      - name: Harbor私服
+        type: harbor
+        url: harbor.example.com
+        username: admin
+        password: your-password
+        project: library
+        description: Harbor私有仓库，支持多项目管理
         
-      target:
-        url: "your-registry.com"
-        username: "your-username"
-        password: "your-password"
-        namespace: "your-namespace"
+      # 阿里云ACR示例
+      - name: 阿里云ACR
+        type: acr
+        url: registry.cn-hangzhou.aliyuncs.com
+        username: your-username
+        password: your-password
+        namespace: your-namespace
+        description: 阿里云容器镜像服务，支持多地域部署
+        
+      # 华为云SWR示例
+      - name: 华为云SWR
+        type: swr
+        url: swr.cn-north-4.myhuaweicloud.com
+        username: cn-north-4@your-access-key
+        password: your-secret-key
+        namespace: your-namespace
+        description: 华为云容器镜像服务
+        
+      # 腾讯云TCR示例
+      - name: 腾讯云TCR
+        type: tcr
+        url: your-instance.tencentcloudcr.com
+        username: your-username
+        password: your-password
+        namespace: your-namespace
+        description: 腾讯云容器镜像服务
+        
+      # Nexus私服示例
+      - name: Nexus私服
+        type: nexus
+        url: nexus.example.com:8082
+        username: nexus-user
+        password: your-password
+        repository: docker-hosted
+        description: Nexus Repository Manager
+        
+      # 本地文件导出（推荐保留）
+      - name: 本地文件
+        type: local_file
+        url: downloads
+        description: 导出镜像为tar包文件，可用于docker load导入
         
     sync_config:
       batch_size: 5

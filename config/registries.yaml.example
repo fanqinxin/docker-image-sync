@@ -1,81 +1,74 @@
-registries:
-  source:
-    url: "docker.io"
-    username: ""
-    password: ""
-    namespace: "library"
-    
-  target:
-    url: "your-registry.com"
-    username: "your-username"
-    password: "your-password"
-    namespace: "your-namespace"
-    
-sync_config:
-  batch_size: 5
-  retry_count: 3
-  timeout: 300
-  parallel_downloads: 2
-  
-image_filters:
-  include_patterns:
-    - "nginx:*"
-    - "redis:*"
-    - "mysql:*"
-  exclude_patterns:
-    - "*:debug"
-    - "*:test"
-    
-logging:
-  level: "INFO"
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: "/app/logs/sync.log"
-  max_size: "100MB"
-  backup_count: 5
+# Docker镜像同步工具 - 仓库配置示例文件
+# 复制此文件为 registries.yaml 并修改为您的实际配置
 
-# 示例配置 - 不同类型的私服配置
-examples:
-  harbor:
-    name: "Harbor私服"
-    type: "harbor"
-    url: "harbor.example.com"
-    username: "admin"
-    password: "your-password"
-    project: "library"
-    description: "Harbor私有仓库"
+registries:
+  # Harbor私服示例
+  - name: Harbor私服
+    type: harbor
+    url: harbor.example.com
+    username: admin
+    password: your-password
+    project: library
+    description: Harbor私有仓库，支持多项目管理
     
-  aliyun_acr:
-    name: "阿里云ACR"
-    type: "acr"
-    url: "registry.cn-hangzhou.aliyuncs.com"
-    username: "your-username"
-    password: "your-password"
-    namespace: "your-namespace"
-    description: "阿里云容器镜像服务"
+  # 阿里云ACR示例
+  - name: 阿里云ACR
+    type: acr
+    url: registry.cn-hangzhou.aliyuncs.com
+    username: your-username
+    password: your-password
+    namespace: your-namespace
+    description: 阿里云容器镜像服务，支持多地域部署
     
-  nexus:
-    name: "Nexus私服"
-    type: "nexus"
-    url: "nexus.example.com:8082"
-    username: "nexus-user"
-    password: "your-password"
-    repository: "docker-hosted"
-    description: "Nexus Repository Manager"
+  # 华为云SWR示例
+  - name: 华为云SWR
+    type: swr
+    url: swr.cn-north-4.myhuaweicloud.com
+    username: cn-north-4@your-access-key
+    password: your-secret-key
+    namespace: your-namespace
+    description: 华为云容器镜像服务
     
-  huawei_swr:
-    name: "华为云SWR"
-    type: "swr"
-    url: "swr.cn-north-4.myhuaweicloud.com"
-    username: "your-username"
-    password: "your-password"
-    namespace: "your-namespace"
-    description: "华为云容器镜像服务"
+  # 腾讯云TCR示例
+  - name: 腾讯云TCR
+    type: tcr
+    url: your-instance.tencentcloudcr.com
+    username: your-username
+    password: your-password
+    namespace: your-namespace
+    description: 腾讯云容器镜像服务
     
-  tencent_tcr:
-    name: "腾讯云TCR"
-    type: "tcr"
-    url: "your-instance.tencentcloudcr.com"
-    username: "your-username"
-    password: "your-password"
-    namespace: "your-namespace"
-    description: "腾讯云容器镜像服务" 
+  # Nexus私服示例
+  - name: Nexus私服
+    type: nexus
+    url: nexus.example.com:8082
+    username: nexus-user
+    password: your-password
+    repository: docker-hosted
+    description: Nexus Repository Manager
+    
+  # 本地文件导出（推荐保留）
+  - name: 本地文件
+    type: local_file
+    url: downloads
+    description: 导出镜像为tar包文件，可用于docker load导入
+
+# 配置说明：
+# 1. 复制此文件为 config/registries.yaml
+# 2. 根据您的实际情况修改上述配置
+# 3. 删除不需要的仓库配置
+# 4. 确保认证信息正确
+# 5. 重启应用程序
+
+# 支持的仓库类型：
+# - harbor: Harbor私服
+# - acr: 阿里云容器镜像服务
+# - swr: 华为云容器镜像服务  
+# - tcr: 腾讯云容器镜像服务
+# - nexus: Nexus Repository Manager
+# - local_file: 本地文件导出
+
+# 安全提示：
+# - 请勿将包含真实密码的配置文件提交到版本控制系统
+# - 建议使用环境变量存储敏感信息
+# - 设置适当的文件权限：chmod 600 config/registries.yaml 
