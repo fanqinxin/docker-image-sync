@@ -1,5 +1,5 @@
 # 多阶段构建 - 构建阶段
-FROM python:3.9-slim as builder
+FROM 192.168.0.25:8888/flydiy-base/python:3.10-slim_fly-1.0.0 as builder
 
 # 设置工作目录
 WORKDIR /app
@@ -20,7 +20,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # 生产阶段
-FROM python:3.9-slim
+FROM 192.168.0.25:8888/flydiy-base/python:3.10-slim_fly-1.0.0
 
 # 创建非root用户
 RUN groupadd -r appuser && useradd -r -g appuser appuser
