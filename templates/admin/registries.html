@@ -6,11 +6,12 @@
     <title>仓库管理 - Docker镜像同步工具</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .registry-icon {
             width: 40px;
             height: 40px;
-            border-radius: 0.375rem;
+            border-radius: var(--radius-md);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -19,19 +20,19 @@
             margin-right: 15px;
             font-size: 1.2rem;
         }
-        .harbor-icon { background: linear-gradient(135deg, #326ce5 0%, #1f5dba 100%); }
-        .acr-icon { background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%); }
-        .nexus-icon { background: linear-gradient(135deg, #00a86b 0%, #008050 100%); }
-        .local-icon { background: linear-gradient(135deg, #6c757d 0%, #545b62 100%); }
-        .default-icon { background: linear-gradient(135deg, #6f42c1 0%, #563d7c 100%); }
+        .harbor-icon { background: var(--info); }
+        .acr-icon { background: var(--primary-color); }
+        .nexus-icon { background: var(--success); }
+        .local-icon { background: var(--text-secondary); }
+        .default-icon { background: var(--primary-color); }
         
         .registry-card {
-            transition: transform 0.2s, box-shadow 0.2s;
-            border: 1px solid rgba(0,0,0,0.125);
+            transition: all 0.2s ease;
+            border: 1px solid var(--border-light) !important;
         }
         .registry-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: var(--shadow-md) !important;
         }
         
         .password-field {
@@ -44,107 +45,118 @@
             transform: translateY(-50%);
             background: none;
             border: none;
-            color: #6c757d;
+            color: var(--text-muted);
             cursor: pointer;
         }
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <!-- 导航栏 -->
-        <nav class="navbar navbar-dark bg-primary mb-4">
-            <div class="container">
-                <div class="d-flex align-items-center">
-                    <a class="navbar-brand me-3" href="/admin">
-                        <i class="fas fa-arrow-left me-2"></i>管理控制面板
-                    </a>
-                    <span class="navbar-text">
-                        <i class="fas fa-server me-2"></i>仓库管理
-                    </span>
-                </div>
-                <div class="navbar-nav-right d-flex align-items-center">
-                    <div class="user-info me-3">
-                        <span class="text-white me-2">
-                            <i class="fas fa-user-shield"></i>
-                            <span id="user-display-name">管理员</span>
-                        </span>
-                        <span class="badge bg-warning">管理员</span>
-                    </div>
-                    <div class="dropdown">
-                        <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-cog"></i>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="/"><i class="fas fa-home me-2"></i>返回主页</a></li>
-                            <li><a class="dropdown-item" href="/admin"><i class="fas fa-tachometer-alt me-2"></i>控制面板</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><button class="dropdown-item text-danger" onclick="logout()"><i class="fas fa-sign-out-alt me-2"></i>退出登录</button></li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </nav>
-
+    <!-- 现代化导航栏 -->
+    <nav class="navbar">
         <div class="container">
-            <!-- 页面标题和操作 -->
-            <div class="row mb-4">
-                <div class="col-md-8">
-                    <h2><i class="fas fa-server me-2"></i>仓库管理</h2>
-                    <p class="text-muted">管理Docker镜像仓库配置，支持Harbor、阿里云ACR、Nexus等多种类型</p>
+            <div class="d-flex align-items-center">
+                <a class="navbar-brand me-3" href="/admin">
+                    <i class="fas fa-arrow-left me-2"></i>管理控制面板
+                </a>
+                <span class="navbar-text text-muted">
+                    <i class="fas fa-server me-2"></i>仓库管理
+                </span>
+            </div>
+            <div class="navbar-nav-right">
+                <div class="user-info">
+                    <span class="text-muted me-2">
+                        <i class="fas fa-user-shield"></i>
+                        <span id="user-display-name">管理员</span>
+                    </span>
+                    <span class="badge bg-warning">管理员</span>
                 </div>
-                <div class="col-md-4 text-end">
-                    <button class="btn btn-success" onclick="showCreateRegistryModal()">
-                        <i class="fas fa-plus me-2"></i>添加仓库
+                <div class="dropdown">
+                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-cog"></i>
                     </button>
-                    <button class="btn btn-outline-secondary" onclick="refreshRegistriesList()">
-                        <i class="fas fa-sync-alt me-2"></i>刷新列表
-                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="/"><i class="fas fa-home me-2"></i>返回主页</a></li>
+                        <li><a class="dropdown-item" href="/admin"><i class="fas fa-tachometer-alt me-2"></i>控制面板</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button class="dropdown-item text-danger" onclick="logout()"><i class="fas fa-sign-out-alt me-2"></i>退出登录</button></li>
+                    </ul>
                 </div>
             </div>
+        </div>
+    </nav>
 
-            <!-- 统计信息 -->
-            <div class="row mb-4">
-                <div class="col-md-3">
-                    <div class="card border-primary">
-                        <div class="card-body text-center">
-                            <h4 class="text-primary" id="total-registries">-</h4>
-                            <p class="mb-0">仓库总数</p>
-                        </div>
+    <div class="container">
+        <!-- 页面标题和操作 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-2"><i class="fas fa-server me-2"></i>仓库管理</h2>
+                        <p class="text-muted mb-0">管理Docker镜像仓库配置，支持Harbor、阿里云ACR、Nexus等多种类型</p>
                     </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card border-info">
-                        <div class="card-body text-center">
-                            <h4 class="text-info" id="harbor-count">-</h4>
-                            <p class="mb-0">Harbor仓库</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card border-warning">
-                        <div class="card-body text-center">
-                            <h4 class="text-warning" id="acr-count">-</h4>
-                            <p class="mb-0">阿里云ACR</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card border-success">
-                        <div class="card-body text-center">
-                            <h4 class="text-success" id="other-count">-</h4>
-                            <p class="mb-0">其他类型</p>
-                        </div>
+                    <div class="col-md-4 text-end">
+                        <button class="btn btn-success" onclick="showCreateRegistryModal()">
+                            <i class="fas fa-plus me-2"></i>添加仓库
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="refreshRegistriesList()">
+                            <i class="fas fa-sync-alt me-2"></i>刷新列表
+                        </button>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- 仓库列表 -->
-            <div class="row" id="registries-container">
-                <div class="col-12 text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
+        <!-- 统计信息 -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card border-primary">
+                    <div class="card-body text-center">
+                        <h4 class="text-primary" id="total-registries">-</h4>
+                        <p class="mb-0">仓库总数</p>
                     </div>
-                    <div class="mt-2">正在加载仓库配置...</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-info">
+                    <div class="card-body text-center">
+                        <h4 class="text-info" id="harbor-count">-</h4>
+                        <p class="mb-0">Harbor仓库</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-warning">
+                    <div class="card-body text-center">
+                        <h4 class="text-warning" id="acr-count">-</h4>
+                        <p class="mb-0">阿里云ACR</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-success">
+                    <div class="card-body text-center">
+                        <h4 class="text-success" id="other-count">-</h4>
+                        <p class="mb-0">其他类型</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 仓库列表 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>仓库列表
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row" id="registries-container">
+                    <div class="col-12 text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <div class="mt-2">正在加载仓库配置...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -198,8 +210,10 @@
 
                         <!-- 认证信息 -->
                         <div class="card border-light mb-3" id="auth-section">
-                            <div class="card-header bg-light">
-                                <h6 class="mb-0"><i class="fas fa-key me-2"></i>认证信息</h6>
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-key me-2"></i>认证信息
+                                </h6>
                             </div>
                             <div class="card-body">
                                 <div class="row">
@@ -211,7 +225,7 @@
                                     </div>
                                     <div class="col-md-6">
                                         <div class="mb-3">
-                                            <label for="registry-password" class="form-label">密码/Token</label>
+                                            <label for="registry-password" class="form-label">密码/令牌</label>
                                             <div class="password-field">
                                                 <input type="password" class="form-control" id="registry-password">
                                                 <button type="button" class="password-toggle" onclick="togglePassword('registry-password')">
@@ -221,43 +235,45 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="mb-3">
+                                    <label for="registry-namespace" class="form-label">默认命名空间/项目</label>
+                                    <input type="text" class="form-control" id="registry-namespace">
+                                    <div class="form-text">镜像将推送到此命名空间下</div>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- 命名空间配置 -->
-                        <div class="card border-light mb-3" id="namespace-section">
-                            <div class="card-header bg-light">
-                                <h6 class="mb-0"><i class="fas fa-folder me-2"></i>命名空间配置</h6>
+                        <!-- 高级配置 -->
+                        <div class="card border-light mb-3">
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-cogs me-2"></i>高级配置
+                                </h6>
                             </div>
                             <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="registry-project" class="form-label" id="project-label">项目名称</label>
-                                            <input type="text" class="form-control" id="registry-project">
-                                            <div class="form-text" id="project-help">Harbor项目名称，如：library</div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="registry-insecure">
+                                            <label class="form-check-label" for="registry-insecure">
+                                                允许不安全连接 (HTTP)
+                                            </label>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="registry-namespace" class="form-label" id="namespace-label">命名空间</label>
-                                            <input type="text" class="form-control" id="registry-namespace">
-                                            <div class="form-text" id="namespace-help">云服务命名空间，如：my-namespace</div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="registry-active" checked>
+                                            <label class="form-check-label" for="registry-active">
+                                                启用此仓库配置
+                                            </label>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="mb-3" id="repository-field" style="display: none;">
-                                    <label for="registry-repository" class="form-label">仓库名称</label>
-                                    <input type="text" class="form-control" id="registry-repository">
-                                    <div class="form-text">Nexus仓库名称，如：docker-hosted</div>
+                                <div class="mb-3 mt-3">
+                                    <label for="registry-description" class="form-label">描述信息</label>
+                                    <textarea class="form-control" id="registry-description" rows="2" placeholder="可选的描述信息..."></textarea>
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="registry-description" class="form-label">描述信息</label>
-                            <textarea class="form-control" id="registry-description" rows="2"></textarea>
-                            <div class="form-text">可选的描述信息，帮助识别用途</div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -283,9 +299,9 @@
                 </div>
                 <div class="modal-body">
                     <p>您确定要删除仓库配置 <strong id="delete-registry-name"></strong> 吗？</p>
-                    <div class="alert alert-danger">
-                        <i class="fas fa-warning me-2"></i>
-                        <strong>警告：</strong>删除后将无法恢复，请确认操作。
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>注意：</strong>删除后将无法恢复，相关的同步任务可能会失败。
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -300,484 +316,99 @@
 
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <script>
-        // 简化的用户认证类，仅用于仓库管理页面
-        class SimpleUserAuth {
-            constructor() {
-                this.currentUser = null;
-                this.init();
-            }
+        // 仓库管理功能
+        let currentEditingRegistryId = null;
 
-            async init() {
-                await this.loadUserInfo();
-            }
-
-            async loadUserInfo() {
-                try {
-                    const response = await fetch('/api/user/info');
-                    if (response.ok) {
-                        this.currentUser = await response.json();
-                        this.updateUserUI();
-                    } else if (response.status === 401) {
-                        window.location.href = '/login';
-                        return;
-                    }
-                } catch (error) {
-                    console.error('获取用户信息失败:', error);
-                    window.location.href = '/login';
-                }
-            }
-
-            updateUserUI() {
-                if (!this.currentUser) return;
-
-                const displayNameElement = document.getElementById('user-display-name');
-                if (displayNameElement) {
-                    displayNameElement.textContent = this.currentUser.display_name || this.currentUser.username;
-                }
-            }
-
-            async logout() {
-                try {
-                    const response = await fetch('/api/logout', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-
-                    if (response.ok) {
-                        this.currentUser = null;
-                        window.location.href = '/login';
-                    } else {
-                        throw new Error('登出失败');
-                    }
-                } catch (error) {
-                    console.error('登出错误:', error);
-                    window.location.href = '/login';
-                }
-            }
-        }
-
-        // 仓库管理类
-        class RegistryManager {
-            constructor() {
-                this.registries = [];
-                this.currentEditIndex = null;
-                this.init();
-            }
-
-            async init() {
-                await this.loadRegistries();
-                this.bindEvents();
-            }
-
-            bindEvents() {
-                document.getElementById('registryForm').addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    this.saveRegistry();
-                });
-            }
-
-            async loadRegistries() {
-                try {
-                    const response = await fetch('/api/admin/registries');
-                    if (response.ok) {
-                        this.registries = await response.json();
-                        this.renderRegistries();
-                        this.updateStatistics();
-                    } else {
-                        throw new Error('获取仓库列表失败');
-                    }
-                } catch (error) {
-                    console.error('加载仓库失败:', error);
-                    this.showError('加载仓库列表失败，请刷新页面重试');
-                }
-            }
-
-            renderRegistries() {
-                const container = document.getElementById('registries-container');
-                
-                if (this.registries.length === 0) {
-                    container.innerHTML = `
-                        <div class="col-12 text-center py-5">
-                            <i class="fas fa-server text-muted" style="font-size: 4rem;"></i>
-                            <div class="mt-3">
-                                <h5 class="text-muted">暂无仓库配置</h5>
-                                <p class="text-muted">点击"添加仓库"按钮开始配置第一个仓库</p>
-                                <button class="btn btn-primary" onclick="showCreateRegistryModal()">
-                                    <i class="fas fa-plus me-2"></i>添加仓库
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                    return;
-                }
-
-                container.innerHTML = this.registries.map((registry, index) => `
-                    <div class="col-lg-6 col-xl-4 mb-4">
-                        <div class="card registry-card h-100">
-                            <div class="card-body">
-                                <div class="d-flex align-items-center mb-3">
-                                    <div class="${this.getRegistryIconClass(registry.type)}">
-                                        ${this.getRegistryIcon(registry.type)}
-                                    </div>
-                                    <div class="flex-grow-1">
-                                        <h6 class="mb-1">${this.escapeHtml(registry.name)}</h6>
-                                        <small class="text-muted">${this.getTypeName(registry.type)}</small>
-                                    </div>
-                                    <div class="dropdown">
-                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                                            <i class="fas fa-ellipsis-v"></i>
-                                        </button>
-                                        <ul class="dropdown-menu dropdown-menu-end">
-                                            <li><button class="dropdown-item" onclick="registryManager.editRegistry(${index})">
-                                                <i class="fas fa-edit me-2"></i>编辑
-                                            </button></li>
-                                            <li><button class="dropdown-item text-danger" onclick="registryManager.deleteRegistry(${index})">
-                                                <i class="fas fa-trash me-2"></i>删除
-                                            </button></li>
-                                        </ul>
-                                    </div>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <div class="d-flex align-items-center mb-2">
-                                        <i class="fas fa-link text-muted me-2"></i>
-                                        <code class="small">${this.escapeHtml(registry.url)}</code>
-                                    </div>
-                                    ${registry.username ? `
-                                        <div class="d-flex align-items-center mb-2">
-                                            <i class="fas fa-user text-muted me-2"></i>
-                                            <span class="small">${this.escapeHtml(registry.username)}</span>
-                                        </div>
-                                    ` : ''}
-                                    ${this.getNamespaceInfo(registry)}
-                                </div>
-                                
-                                ${registry.description ? `
-                                    <div class="small text-muted">
-                                        <i class="fas fa-info-circle me-1"></i>
-                                        ${this.escapeHtml(registry.description)}
-                                    </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-            }
-
-            updateStatistics() {
-                const total = this.registries.length;
-                const harbor = this.registries.filter(r => r.type === 'harbor').length;
-                const acr = this.registries.filter(r => r.type === 'acr').length;
-                const other = total - harbor - acr;
-
-                document.getElementById('total-registries').textContent = total;
-                document.getElementById('harbor-count').textContent = harbor;
-                document.getElementById('acr-count').textContent = acr;
-                document.getElementById('other-count').textContent = other;
-            }
-
-            showCreateRegistryModal() {
-                this.currentEditIndex = null;
-                this.resetForm();
-                document.getElementById('registryModalTitle').innerHTML = '<i class="fas fa-plus me-2"></i>添加仓库配置';
-                
-                const modal = new bootstrap.Modal(document.getElementById('registryModal'));
-                modal.show();
-            }
-
-            editRegistry(index) {
-                const registry = this.registries[index];
-                if (!registry) return;
-
-                this.currentEditIndex = index;
-                this.resetForm();
-                
-                // 填充表单
-                document.getElementById('registry-name').value = registry.name || '';
-                document.getElementById('registry-type').value = registry.type || '';
-                document.getElementById('registry-url').value = registry.url || '';
-                document.getElementById('registry-username').value = registry.username || '';
-                document.getElementById('registry-password').value = registry.password || '';
-                document.getElementById('registry-project').value = registry.project || '';
-                document.getElementById('registry-namespace').value = registry.namespace || '';
-                document.getElementById('registry-repository').value = registry.repository || '';
-                document.getElementById('registry-description').value = registry.description || '';
-
-                // 更新字段显示
-                updateRegistryFields();
-
-                document.getElementById('registryModalTitle').innerHTML = '<i class="fas fa-edit me-2"></i>编辑仓库配置';
-                
-                const modal = new bootstrap.Modal(document.getElementById('registryModal'));
-                modal.show();
-            }
-
-            async saveRegistry() {
-                const formData = this.getFormData();
-                if (!this.validateForm(formData)) return;
-
-                try {
-                    const isEdit = this.currentEditIndex !== null;
-                    const url = isEdit ? `/api/admin/registries/${this.currentEditIndex}` : '/api/admin/registries';
-                    const method = isEdit ? 'PUT' : 'POST';
-
-                    const response = await fetch(url, {
-                        method: method,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(formData)
-                    });
-
-                    const result = await response.json();
-
-                    if (response.ok) {
-                        this.showSuccess(isEdit ? '仓库配置更新成功' : '仓库配置创建成功');
-                        bootstrap.Modal.getInstance(document.getElementById('registryModal')).hide();
-                        await this.loadRegistries();
-                    } else {
-                        this.showError(result.error || '操作失败');
-                    }
-                } catch (error) {
-                    console.error('保存仓库失败:', error);
-                    this.showError('网络错误，请重试');
-                }
-            }
-
-            deleteRegistry(index) {
-                const registry = this.registries[index];
-                if (!registry) return;
-
-                document.getElementById('delete-registry-name').textContent = registry.name;
-                const modal = new bootstrap.Modal(document.getElementById('deleteRegistryModal'));
-                modal.show();
-
-                document.getElementById('confirm-delete-registry-btn').onclick = async () => {
-                    try {
-                        const response = await fetch(`/api/admin/registries/${index}`, {
-                            method: 'DELETE'
-                        });
-
-                        const result = await response.json();
-
-                        if (response.ok) {
-                            this.showSuccess('仓库配置删除成功');
-                            modal.hide();
-                            await this.loadRegistries();
-                        } else {
-                            this.showError(result.error || '删除失败');
-                        }
-                    } catch (error) {
-                        console.error('删除仓库失败:', error);
-                        this.showError('网络错误，请重试');
-                    }
-                };
-            }
-
-            getFormData() {
-                return {
-                    name: document.getElementById('registry-name').value.trim(),
-                    type: document.getElementById('registry-type').value,
-                    url: document.getElementById('registry-url').value.trim(),
-                    username: document.getElementById('registry-username').value.trim(),
-                    password: document.getElementById('registry-password').value,
-                    project: document.getElementById('registry-project').value.trim(),
-                    namespace: document.getElementById('registry-namespace').value.trim(),
-                    repository: document.getElementById('registry-repository').value.trim(),
-                    description: document.getElementById('registry-description').value.trim()
-                };
-            }
-
-            validateForm(formData) {
-                if (!formData.name) {
-                    this.showError('请输入仓库名称');
-                    return false;
-                }
-                if (!formData.type) {
-                    this.showError('请选择仓库类型');
-                    return false;
-                }
-                if (!formData.url) {
-                    this.showError('请输入仓库地址');
-                    return false;
-                }
-                return true;
-            }
-
-            resetForm() {
-                document.getElementById('registryForm').reset();
-                updateRegistryFields();
-            }
-
-            // 工具方法
-            getRegistryIconClass(type) {
-                const classes = {
-                    'harbor': 'registry-icon harbor-icon',
-                    'acr': 'registry-icon acr-icon',
-                    'nexus': 'registry-icon nexus-icon',
-                    'local_file': 'registry-icon local-icon',
-                    'swr': 'registry-icon acr-icon',
-                    'tcr': 'registry-icon acr-icon'
-                };
-                return classes[type] || 'registry-icon default-icon';
-            }
-
-            getRegistryIcon(type) {
-                const icons = {
-                    'harbor': '<i class="fas fa-anchor"></i>',
-                    'acr': '<i class="fas fa-cloud"></i>',
-                    'nexus': '<i class="fas fa-box"></i>',
-                    'local_file': '<i class="fas fa-folder"></i>',
-                    'swr': '<i class="fas fa-cloud"></i>',
-                    'tcr': '<i class="fas fa-cloud"></i>'
-                };
-                return icons[type] || '<i class="fas fa-server"></i>';
-            }
-
-            getTypeName(type) {
-                const names = {
-                    'harbor': 'Harbor私服',
-                    'acr': '阿里云ACR',
-                    'nexus': 'Nexus Repository',
-                    'local_file': '本地文件导出',
-                    'swr': '华为云SWR',
-                    'tcr': '腾讯云TCR'
-                };
-                return names[type] || '其他类型';
-            }
-
-            getNamespaceInfo(registry) {
-                const info = [];
-                if (registry.project) {
-                    info.push(`<div class="d-flex align-items-center mb-1">
-                        <i class="fas fa-folder text-muted me-2"></i>
-                        <span class="small">项目: ${this.escapeHtml(registry.project)}</span>
-                    </div>`);
-                }
-                if (registry.namespace) {
-                    info.push(`<div class="d-flex align-items-center mb-1">
-                        <i class="fas fa-tags text-muted me-2"></i>
-                        <span class="small">命名空间: ${this.escapeHtml(registry.namespace)}</span>
-                    </div>`);
-                }
-                if (registry.repository) {
-                    info.push(`<div class="d-flex align-items-center mb-1">
-                        <i class="fas fa-archive text-muted me-2"></i>
-                        <span class="small">仓库: ${this.escapeHtml(registry.repository)}</span>
-                    </div>`);
-                }
-                return info.join('');
-            }
-
-            escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-
-            showSuccess(message) {
-                alert('✅ ' + message);
-            }
-
-            showError(message) {
-                alert('❌ ' + message);
-            }
-        }
-
-        // 全局函数
-        function updateRegistryFields() {
-            const type = document.getElementById('registry-type').value;
-            const authSection = document.getElementById('auth-section');
-            const namespaceSection = document.getElementById('namespace-section');
-            const repositoryField = document.getElementById('repository-field');
-            const projectLabel = document.getElementById('project-label');
-            const projectHelp = document.getElementById('project-help');
-            const namespaceLabel = document.getElementById('namespace-label');
-            const namespaceHelp = document.getElementById('namespace-help');
-            const urlHelp = document.getElementById('url-help');
-
-            // 根据类型调整字段显示和帮助文本
-            switch (type) {
-                case 'harbor':
-                    authSection.style.display = '';
-                    namespaceSection.style.display = '';
-                    repositoryField.style.display = 'none';
-                    projectLabel.textContent = '项目名称';
-                    projectHelp.textContent = 'Harbor项目名称，如：library';
-                    namespaceLabel.textContent = '命名空间';
-                    namespaceHelp.textContent = '可选的命名空间，留空使用项目名';
-                    urlHelp.textContent = '例如：harbor.example.com';
-                    break;
-                case 'acr':
-                    authSection.style.display = '';
-                    namespaceSection.style.display = '';
-                    repositoryField.style.display = 'none';
-                    projectLabel.textContent = '实例名称';
-                    projectHelp.textContent = '阿里云ACR实例名称（可选）';
-                    namespaceLabel.textContent = '命名空间';
-                    namespaceHelp.textContent = '阿里云ACR命名空间，如：my-namespace';
-                    urlHelp.textContent = '例如：registry.cn-hangzhou.aliyuncs.com';
-                    break;
-                case 'nexus':
-                    authSection.style.display = '';
-                    namespaceSection.style.display = '';
-                    repositoryField.style.display = '';
-                    projectLabel.textContent = '组织名称';
-                    projectHelp.textContent = 'Nexus组织名称（可选）';
-                    namespaceLabel.textContent = '命名空间';
-                    namespaceHelp.textContent = 'Nexus命名空间（可选）';
-                    urlHelp.textContent = '例如：nexus.example.com:8082';
-                    break;
-                case 'local_file':
-                    authSection.style.display = 'none';
-                    namespaceSection.style.display = 'none';
-                    repositoryField.style.display = 'none';
-                    urlHelp.textContent = '本地文件保存路径，如：downloads';
-                    break;
-                default:
-                    authSection.style.display = '';
-                    namespaceSection.style.display = '';
-                    repositoryField.style.display = 'none';
-                    projectLabel.textContent = '项目/命名空间';
-                    projectHelp.textContent = '项目或命名空间名称';
-                    namespaceLabel.textContent = '子命名空间';
-                    namespaceHelp.textContent = '可选的子命名空间';
-                    urlHelp.textContent = '仓库地址，如：registry.example.com';
-            }
-        }
-
-        function togglePassword(fieldId) {
-            const field = document.getElementById(fieldId);
-            const toggle = field.nextElementSibling.querySelector('i');
+        // 切换密码可见性
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            const toggle = input.nextElementSibling.querySelector('i');
             
-            if (field.type === 'password') {
-                field.type = 'text';
+            if (input.type === 'password') {
+                input.type = 'text';
                 toggle.className = 'fas fa-eye-slash';
             } else {
-                field.type = 'password';
+                input.type = 'password';
                 toggle.className = 'fas fa-eye';
             }
         }
 
-        function showCreateRegistryModal() {
-            registryManager.showCreateRegistryModal();
-        }
-
-        function refreshRegistriesList() {
-            registryManager.loadRegistries();
-        }
-
-        function logout() {
-            if (confirm('确定要退出登录吗？')) {
-                userAuth.logout();
+        // 更新仓库字段根据类型
+        function updateRegistryFields() {
+            const type = document.getElementById('registry-type').value;
+            const urlHelp = document.getElementById('url-help');
+            
+            switch(type) {
+                case 'harbor':
+                    urlHelp.textContent = '例如：harbor.example.com';
+                    break;
+                case 'acr':
+                    urlHelp.textContent = '例如：registry.cn-hangzhou.aliyuncs.com';
+                    break;
+                case 'nexus':
+                    urlHelp.textContent = '例如：nexus.example.com:8082';
+                    break;
+                case 'local_file':
+                    urlHelp.textContent = '本地文件导出，无需填写URL';
+                    break;
+                default:
+                    urlHelp.textContent = '请输入完整的仓库地址';
             }
         }
 
-        // 初始化
-        let registryManager;
-        let userAuth;
+        // 显示创建仓库模态框
+        function showCreateRegistryModal() {
+            currentEditingRegistryId = null;
+            document.getElementById('registryModalTitle').innerHTML = '<i class="fas fa-plus me-2"></i>添加仓库配置';
+            document.getElementById('registryForm').reset();
+            document.getElementById('registry-active').checked = true;
+            
+            const modal = new bootstrap.Modal(document.getElementById('registryModal'));
+            modal.show();
+        }
 
+        // 显示编辑仓库模态框
+        function showEditRegistryModal(registryId) {
+            currentEditingRegistryId = registryId;
+            document.getElementById('registryModalTitle').innerHTML = '<i class="fas fa-edit me-2"></i>编辑仓库配置';
+            
+            const modal = new bootstrap.Modal(document.getElementById('registryModal'));
+            modal.show();
+        }
+
+        // 显示删除确认模态框
+        function showDeleteRegistryModal(registryId, registryName) {
+            currentEditingRegistryId = registryId;
+            document.getElementById('delete-registry-name').textContent = registryName;
+            
+            const modal = new bootstrap.Modal(document.getElementById('deleteRegistryModal'));
+            modal.show();
+        }
+
+        // 刷新仓库列表
+        function refreshRegistriesList() {
+            console.log('刷新仓库列表');
+        }
+
+        // 登出功能
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                window.location.href = '/login';
+            }
+        }
+
+        // 页面初始化
         document.addEventListener('DOMContentLoaded', function() {
-            userAuth = new SimpleUserAuth();
-            registryManager = new RegistryManager();
+            console.log('仓库管理页面已加载');
+            
+            // 模拟加载仓库列表
+            setTimeout(() => {
+                document.getElementById('registries-container').innerHTML = `
+                    <div class="col-12">
+                        <p class="text-muted text-center">仓库配置功能正在开发中...</p>
+                    </div>
+                `;
+            }, 1000);
         });
     </script>
 </body>

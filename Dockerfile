@@ -16,42 +16,52 @@ RUN apt-get update && \
 # 复制依赖文件
 COPY requirements.txt .
 
-# 安装Python依赖到临时目录
-RUN pip install --no-cache-dir --user -r requirements.txt
+# 安装Python依赖
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 生产阶段
 FROM 192.168.0.25:8888/flydiy-base/python:3.10-slim_fly-1.0.0
-
-# 创建非root用户
-RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # 安装运行时依赖
 RUN apt-get update && \
     apt-get install -y \
     skopeo \
     curl \
+    tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# 设置时区为上海
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 设置工作目录
 WORKDIR /app
 
 # 从构建阶段复制Python包
-COPY --from=builder /root/.local /home/appuser/.local
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # 复制应用代码
 COPY . .
 
 # 创建必要的目录并设置权限
 RUN mkdir -p config templates static/css static/js logs downloads \
-    && chown -R appuser:appuser /app \
-    && chmod +x install_skopeo.sh start.sh
+    && mkdir -p /root/.docker \
+    && mkdir -p /tmp/docker-sync \
+    && chmod -R 755 /app \
+    && chmod -R 777 /tmp/docker-sync \
+    && chmod +x install_skopeo.sh start.sh \
+    && chmod 755 /app/config \
+    && chmod 755 /app/logs \
+    && chmod 755 /app/downloads \
+    && chmod 644 /app/config/* 2>/dev/null || true
 
-# 设置PATH以包含用户本地Python包
-ENV PATH=/home/appuser/.local/bin:$PATH
-
-# 切换到非root用户
-USER appuser
+# 设置环境变量
+ENV HOME=/root
+ENV USER=root
+ENV DOCKER_CONFIG=/root/.docker
+ENV TMPDIR=/tmp/docker-sync
 
 # 暴露端口
 EXPOSE 5000
@@ -66,5 +76,5 @@ ENV PYTHONDONTWRITEBYTECODE=1
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# 启动命令
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "app:app"] 
+# 启动命令（以root用户运行）
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "app:app"] 

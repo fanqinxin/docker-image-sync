@@ -6,6 +6,7 @@
     <title>用户管理 - Docker镜像同步工具</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .user-avatar {
             width: 40px;
@@ -19,20 +20,20 @@
             margin-right: 15px;
             font-size: 1.2rem;
         }
-        .admin-avatar { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); }
-        .user-avatar-default { background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); }
+        .admin-avatar { background: var(--danger); }
+        .user-avatar-default { background: var(--primary-color); }
         
         .user-card {
-            transition: transform 0.2s, box-shadow 0.2s;
-            border: 1px solid rgba(0,0,0,0.125);
+            transition: all 0.2s ease;
+            border: 1px solid var(--border-light) !important;
         }
         .user-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: var(--shadow-md) !important;
         }
         
-        .status-active { color: #28a745; }
-        .status-inactive { color: #dc3545; }
+        .status-active { color: var(--success) !important; }
+        .status-inactive { color: var(--danger) !important; }
         
         .password-field {
             position: relative;
@@ -44,131 +45,146 @@
             transform: translateY(-50%);
             background: none;
             border: none;
-            color: #6c757d;
+            color: var(--text-muted);
             cursor: pointer;
         }
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <!-- 导航栏 -->
-        <nav class="navbar navbar-dark bg-primary mb-4">
-            <div class="container">
-                <div class="d-flex align-items-center">
-                    <a class="navbar-brand me-3" href="/admin">
-                        <i class="fas fa-arrow-left me-2"></i>管理控制面板
-                    </a>
-                    <span class="navbar-text">
-                        <i class="fas fa-users me-2"></i>用户管理
-                    </span>
-                </div>
-                <div class="navbar-nav-right d-flex align-items-center">
-                    <div class="user-info me-3">
-                        <span class="text-white me-2">
-                            <i class="fas fa-user-shield"></i>
-                            <span id="user-display-name">管理员</span>
-                        </span>
-                        <span class="badge bg-warning">管理员</span>
-                    </div>
-                    <div class="dropdown">
-                        <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-cog"></i>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="/"><i class="fas fa-home me-2"></i>返回主页</a></li>
-                            <li><a class="dropdown-item" href="/admin"><i class="fas fa-tachometer-alt me-2"></i>控制面板</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><button class="dropdown-item text-danger" onclick="logout()"><i class="fas fa-sign-out-alt me-2"></i>退出登录</button></li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </nav>
-
+    <!-- 现代化导航栏 -->
+    <nav class="navbar">
         <div class="container">
-            <!-- 页面标题和操作 -->
-            <div class="row mb-4">
-                <div class="col-md-8">
-                    <h2><i class="fas fa-users me-2"></i>用户管理</h2>
-                    <p class="text-muted">管理系统用户账户，创建、编辑、删除用户，设置权限和角色</p>
+            <div class="d-flex align-items-center">
+                <a class="navbar-brand me-3" href="/admin">
+                    <i class="fas fa-arrow-left me-2"></i>管理控制面板
+                </a>
+                <span class="navbar-text text-muted">
+                    <i class="fas fa-users me-2"></i>用户管理
+                </span>
+            </div>
+            <div class="navbar-nav-right">
+                <div class="user-info">
+                    <span class="text-muted me-2">
+                        <i class="fas fa-user-shield"></i>
+                        <span id="user-display-name">管理员</span>
+                    </span>
+                    <span class="badge bg-warning">管理员</span>
                 </div>
-                <div class="col-md-4 text-end">
-                    <button class="btn btn-success" onclick="showCreateUserModal()">
-                        <i class="fas fa-plus me-2"></i>创建用户
+                <div class="dropdown">
+                    <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-cog"></i>
                     </button>
-                    <button class="btn btn-outline-secondary" onclick="refreshUsersList()">
-                        <i class="fas fa-sync-alt me-2"></i>刷新列表
-                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="/"><i class="fas fa-home me-2"></i>返回主页</a></li>
+                        <li><a class="dropdown-item" href="/admin"><i class="fas fa-tachometer-alt me-2"></i>控制面板</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button class="dropdown-item text-danger" onclick="logout()"><i class="fas fa-sign-out-alt me-2"></i>退出登录</button></li>
+                    </ul>
                 </div>
             </div>
+        </div>
+    </nav>
 
-            <!-- 统计信息 -->
-            <div class="row mb-4">
-                <div class="col-md-3">
-                    <div class="card border-primary">
-                        <div class="card-body text-center">
-                            <h4 class="text-primary" id="total-users">-</h4>
-                            <p class="mb-0">用户总数</p>
-                        </div>
+    <div class="container">
+        <!-- 页面标题和操作 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-2"><i class="fas fa-users me-2"></i>用户管理</h2>
+                        <p class="text-muted mb-0">管理系统用户账户，创建、编辑、删除用户，设置权限和角色</p>
                     </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card border-danger">
-                        <div class="card-body text-center">
-                            <h4 class="text-danger" id="admin-count">-</h4>
-                            <p class="mb-0">管理员</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card border-success">
-                        <div class="card-body text-center">
-                            <h4 class="text-success" id="active-count">-</h4>
-                            <p class="mb-0">活跃用户</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card border-warning">
-                        <div class="card-body text-center">
-                            <h4 class="text-warning" id="inactive-count">-</h4>
-                            <p class="mb-0">禁用用户</p>
-                        </div>
+                    <div class="col-md-4 text-end">
+                        <button class="btn btn-success" onclick="showCreateUserModal()">
+                            <i class="fas fa-plus me-2"></i>创建用户
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="refreshUsersList()">
+                            <i class="fas fa-sync-alt me-2"></i>刷新列表
+                        </button>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- 搜索和过滤 -->
-            <div class="row mb-4">
-                <div class="col-md-6">
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-search"></i></span>
-                        <input type="text" class="form-control" id="search-users" placeholder="搜索用户名或显示名...">
+        <!-- 统计信息 -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card border-primary">
+                    <div class="card-body text-center">
+                        <h4 class="text-primary" id="total-users">-</h4>
+                        <p class="mb-0">用户总数</p>
                     </div>
-                </div>
-                <div class="col-md-3">
-                    <select class="form-select" id="filter-role">
-                        <option value="">所有角色</option>
-                        <option value="admin">管理员</option>
-                        <option value="user">普通用户</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <select class="form-select" id="filter-status">
-                        <option value="">所有状态</option>
-                        <option value="active">活跃</option>
-                        <option value="inactive">禁用</option>
-                    </select>
                 </div>
             </div>
-
-            <!-- 用户列表 -->
-            <div class="row" id="users-container">
-                <div class="col-12 text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
+            <div class="col-md-3">
+                <div class="card border-danger">
+                    <div class="card-body text-center">
+                        <h4 class="text-danger" id="admin-count">-</h4>
+                        <p class="mb-0">管理员</p>
                     </div>
-                    <div class="mt-2">正在加载用户列表...</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-success">
+                    <div class="card-body text-center">
+                        <h4 class="text-success" id="active-count">-</h4>
+                        <p class="mb-0">活跃用户</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-warning">
+                    <div class="card-body text-center">
+                        <h4 class="text-warning" id="inactive-count">-</h4>
+                        <p class="mb-0">禁用用户</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 搜索和过滤 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text" class="form-control" id="search-users" placeholder="搜索用户名或显示名...">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" id="filter-role">
+                            <option value="">所有角色</option>
+                            <option value="admin">管理员</option>
+                            <option value="user">普通用户</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" id="filter-status">
+                            <option value="">所有状态</option>
+                            <option value="active">活跃</option>
+                            <option value="inactive">禁用</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 用户列表 -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>用户列表
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row" id="users-container">
+                    <div class="col-12 text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <div class="mt-2">正在加载用户列表...</div>
+                    </div>
                 </div>
             </div>
         </div>

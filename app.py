@@ -1393,6 +1393,15 @@ def batch_download_files():
         if not valid_files:
             return jsonify({'error': '没有找到有效的文件'}), 404
         
+        # 检查磁盘空间 - 计算总文件大小
+        total_size = sum(os.path.getsize(file_path) for _, file_path in valid_files)
+        available_space = os.statvfs(downloads_dir).f_frsize * os.statvfs(downloads_dir).f_bavail
+        
+        if total_size * 1.5 > available_space:  # 预留50%空间用于压缩
+            return jsonify({
+                'error': f'磁盘空间不足。需要约 {total_size * 1.5 / (1024*1024):.1f} MB，可用 {available_space / (1024*1024):.1f} MB'
+            }), 507  # HTTP 507 Insufficient Storage
+        
         # 创建临时zip文件
         # 生成唯一的zip文件名
         zip_filename = f"batch_download_{uuid.uuid4().hex[:8]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
@@ -1403,10 +1412,58 @@ def batch_download_files():
         script_path = os.path.join(downloads_dir, script_filename)
         
         try:
-            # 创建zip文件
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for filename, file_path in valid_files:
-                    zipf.write(file_path, filename)
+            # 创建zip文件，使用流式压缩避免内存溢出和超时
+            logger.info(f"开始创建ZIP文件: {zip_filename}，包含 {len(valid_files)} 个文件，总大小: {total_size / (1024*1024):.2f} MB")
+            
+            # 设置最低压缩级别以提高速度
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=1) as zipf:
+                for i, (filename, file_path) in enumerate(valid_files):
+                    try:
+                        # 检查文件是否仍然存在
+                        if not os.path.exists(file_path):
+                            logger.warning(f"文件在压缩过程中被删除: {filename}")
+                            continue
+                        
+                        # 获取文件大小用于进度计算
+                        file_size = os.path.getsize(file_path)
+                        logger.info(f"正在压缩文件 ({i+1}/{len(valid_files)}): {filename} ({file_size / (1024*1024):.2f} MB)")
+                        
+                        # 使用流式方式添加大文件，避免内存溢出
+                        if file_size > 100 * 1024 * 1024:  # 大于100MB的文件使用流式处理
+                            # 手动添加ZIP文件头
+                            info = zipfile.ZipInfo(filename)
+                            info.file_size = file_size
+                            info.compress_type = zipfile.ZIP_DEFLATED
+                            
+                            with zipf.open(info, 'w') as zf, open(file_path, 'rb') as src:
+                                # 分块写入，每次1MB
+                                chunk_size = 1024 * 1024
+                                while True:
+                                    chunk = src.read(chunk_size)
+                                    if not chunk:
+                                        break
+                                    zf.write(chunk)
+                        else:
+                            # 小文件直接添加
+                            zipf.write(file_path, filename)
+                        
+                        logger.debug(f"已添加文件到ZIP: {filename}")
+                        
+                        # 定期检查是否应该停止（例如，如果有其他信号）
+                        # 这里可以添加中断检查逻辑
+                        
+                    except Exception as file_error:
+                        logger.error(f"添加文件 {filename} 到ZIP时出错: {file_error}")
+                        # 继续处理其他文件，不中断整个过程
+                        continue
+            
+            # 验证zip文件是否创建成功
+            if not os.path.exists(zip_path) or os.path.getsize(zip_path) == 0:
+                raise Exception("ZIP文件创建失败或为空")
+            
+            zip_size = os.path.getsize(zip_path)
+            compression_ratio = (1 - zip_size / total_size) * 100 if total_size > 0 else 0
+            logger.info(f"ZIP文件创建成功: {zip_filename}，大小: {zip_size / (1024*1024):.2f} MB，压缩率: {compression_ratio:.1f}%")
             
             # 生成批量推送脚本
             script_content = generate_batch_push_script(valid_files, target_registry)
@@ -1424,6 +1481,10 @@ def batch_download_files():
             result = {
                 'zip_filename': zip_filename,
                 'download_url': f'/downloads/{zip_filename}',
+                'zip_size': zip_size,
+                'zip_size_mb': round(zip_size / (1024*1024), 2),
+                'original_size_mb': round(total_size / (1024*1024), 2),
+                'compression_ratio': round(compression_ratio, 1),
                 'included_files': [f[0] for f in valid_files],
                 'file_count': len(valid_files),
                 'script': {
@@ -1439,7 +1500,30 @@ def batch_download_files():
             
             return jsonify(result)
             
+        except zipfile.BadZipFile as zip_error:
+            logger.error(f"ZIP文件格式错误: {zip_error}")
+            # 清理失败的文件
+            for cleanup_file in [zip_path, script_path]:
+                if os.path.exists(cleanup_file):
+                    try:
+                        os.remove(cleanup_file)
+                    except:
+                        pass
+            return jsonify({'error': '创建压缩包时出现格式错误，请重试'}), 500
+            
+        except OSError as os_error:
+            logger.error(f"文件系统错误: {os_error}")
+            # 清理失败的文件
+            for cleanup_file in [zip_path, script_path]:
+                if os.path.exists(cleanup_file):
+                    try:
+                        os.remove(cleanup_file)
+                    except:
+                        pass
+            return jsonify({'error': f'文件系统错误: {str(os_error)}'}), 507
+            
         except Exception as e:
+            logger.error(f"创建ZIP过程中的未知错误: {e}")
             # 清理失败的文件
             for cleanup_file in [zip_path, script_path]:
                 if os.path.exists(cleanup_file):
@@ -1834,62 +1918,133 @@ def handle_disconnect():
     username = session.get('username', 'unknown')
     logger.info(f"用户 {username} WebSocket连接断开")
 
+@socketio.on('ping')
+def handle_ping():
+    """处理心跳ping，返回pong"""
+    emit('pong', {'timestamp': time.time()})
+
 # 添加自动清理功能
 def auto_cleanup_downloads():
     """自动清理下载目录中的旧文件"""
     try:
         downloads_dir = 'downloads'
         if not os.path.exists(downloads_dir):
+            logger.debug("下载目录不存在，跳过自动清理")
             return
         
-        # 默认清理1天前的文件
+        # 24小时清理策略
         max_age_hours = 24
         current_time = time.time()
         cleanup_count = 0
         
         logger.info("开始自动清理下载目录中的旧文件...")
         
+        # 获取所有文件
+        files_to_process = []
         for filename in os.listdir(downloads_dir):
             file_path = os.path.join(downloads_dir, filename)
-            
             if os.path.isfile(file_path):
-                file_age_hours = (current_time - os.path.getmtime(file_path)) / 3600
-                
-                if file_age_hours > max_age_hours:
-                    try:
-                        os.remove(file_path)
-                        cleanup_count += 1
-                        logger.debug(f"已删除过期文件: {filename} (已存在{file_age_hours:.1f}小时)")
-                    except Exception as e:
-                        logger.warning(f"删除文件 {filename} 失败: {e}")
+                try:
+                    file_mtime = os.path.getmtime(file_path)
+                    file_age_hours = (current_time - file_mtime) / 3600
+                    files_to_process.append((filename, file_path, file_age_hours))
+                except OSError as e:
+                    logger.warning(f"无法获取文件 {filename} 的修改时间: {e}")
+                    continue
+        
+        # 按文件年龄排序
+        files_to_process.sort(key=lambda x: x[2], reverse=True)  # 最老的文件在前
+        
+        # 清理超过24小时的文件
+        for filename, file_path, file_age_hours in files_to_process:
+            if file_age_hours > max_age_hours:
+                try:
+                    # 安全检查：确保文件在downloads目录内
+                    if not os.path.abspath(file_path).startswith(os.path.abspath(downloads_dir)):
+                        logger.warning(f"跳过不安全的文件路径: {file_path}")
+                        continue
+                    
+                    os.remove(file_path)
+                    cleanup_count += 1
+                    logger.debug(f"已删除过期文件: {filename} (已存在{file_age_hours:.1f}小时)")
+                    
+                except Exception as e:
+                    logger.warning(f"删除文件 {filename} 失败: {e}")
         
         if cleanup_count > 0:
             logger.info(f"自动清理完成，删除了 {cleanup_count} 个过期文件")
         else:
             logger.debug("自动清理完成，没有发现过期文件")
             
+        # 检查剩余文件数量，如果太多则保留最新的100个
+        remaining_files = []
+        for filename in os.listdir(downloads_dir):
+            file_path = os.path.join(downloads_dir, filename)
+            if os.path.isfile(file_path):
+                try:
+                    file_mtime = os.path.getmtime(file_path)
+                    remaining_files.append((filename, file_path, file_mtime))
+                except OSError:
+                    continue
+        
+        # 如果剩余文件超过100个，删除最旧的
+        max_files = 100
+        if len(remaining_files) > max_files:
+            remaining_files.sort(key=lambda x: x[2])  # 按时间排序，最旧在前
+            files_to_delete = remaining_files[:len(remaining_files) - max_files]
+            
+            extra_cleanup_count = 0
+            for filename, file_path, _ in files_to_delete:
+                try:
+                    os.remove(file_path)
+                    extra_cleanup_count += 1
+                    logger.debug(f"已删除多余文件: {filename}")
+                except Exception as e:
+                    logger.warning(f"删除多余文件 {filename} 失败: {e}")
+            
+            if extra_cleanup_count > 0:
+                logger.info(f"额外清理了 {extra_cleanup_count} 个多余文件，保留最新的 {max_files} 个")
+                cleanup_count += extra_cleanup_count
+        
+        return cleanup_count
+            
     except Exception as e:
         logger.error(f"自动清理过程中发生错误: {e}")
+        return 0
 
 def start_cleanup_scheduler():
     """启动清理调度器"""
+    import threading
+    import schedule
+    
     # 每6小时执行一次清理
     schedule.every(6).hours.do(auto_cleanup_downloads)
     
     def run_scheduler():
         while True:
-            schedule.run_pending()
-            time.sleep(3600)  # 每小时检查一次
+            try:
+                schedule.run_pending()
+                time.sleep(3600)  # 每小时检查一次
+            except Exception as e:
+                logger.error(f"调度器执行出错: {e}")
+                time.sleep(3600)  # 出错后等待1小时再继续
     
     # 在后台线程中运行调度器
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
     
     # 启动时立即执行一次清理
-    auto_cleanup_cleanup_thread = threading.Thread(target=auto_cleanup_downloads, daemon=True)
-    auto_cleanup_cleanup_thread.start()
+    def initial_cleanup():
+        try:
+            cleanup_count = auto_cleanup_downloads()
+            logger.info(f"启动时清理完成，删除了 {cleanup_count} 个文件")
+        except Exception as e:
+            logger.error(f"启动时清理失败: {e}")
     
-    logger.info("下载目录自动清理调度器已启动 (每6小时运行一次)")
+    initial_cleanup_thread = threading.Thread(target=initial_cleanup, daemon=True)
+    initial_cleanup_thread.start()
+    
+    logger.info("下载目录自动清理调度器已启动 (每6小时运行一次，保留24小时内文件)")
 
 # 手动清理API
 @app.route('/api/files/auto-cleanup', methods=['POST'])
@@ -1898,7 +2053,14 @@ def manual_auto_cleanup():
     """手动触发自动清理"""
     try:
         # 在后台线程中执行清理
-        cleanup_thread = threading.Thread(target=auto_cleanup_downloads)
+        def cleanup_task():
+            try:
+                cleanup_count = auto_cleanup_downloads()
+                logger.info(f"手动清理完成，删除了 {cleanup_count} 个文件")
+            except Exception as e:
+                logger.error(f"手动清理失败: {e}")
+        
+        cleanup_thread = threading.Thread(target=cleanup_task)
         cleanup_thread.start()
         
         username = session.get('username')

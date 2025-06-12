@@ -213,8 +213,19 @@ class DockerSyncApp {
     constructor() {
         this.socket = null;
         this.currentTaskId = null;
-        this.hasReceivedWebSocketMessage = false;
         this.pollingInterval = null;
+        this.heartbeatInterval = null;
+        this.hasReceivedWebSocketMessage = false;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        
+        // 分页相关属性
+        this.currentPage = 1;
+        this.pageSize = 10; // 默认改为10条分页
+        this.allFiles = [];
+        this.filteredFiles = [];
+        this.totalFiles = 0;
+        
         this.init();
     }
 
@@ -222,21 +233,69 @@ class DockerSyncApp {
         this.initSocket();
         this.bindEvents();
         this.loadRegistries();
+        
+        // 如果是非本地环境，在同步任务时自动启动轮询
+        const isDockerEnvironment = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+        if (isDockerEnvironment) {
+            console.log('Docker环境检测：准备使用HTTP轮询模式进行状态监控');
+        }
     }
 
     // 初始化WebSocket连接
     initSocket() {
         try {
-            this.socket = io();
+            // 检测是否在Docker环境中，如果WebSocket有问题则直接使用轮询
+            const isDockerEnvironment = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+            
+            if (isDockerEnvironment) {
+                console.log('检测到非本地环境，使用HTTP轮询模式以确保稳定性');
+                this.updateConnectionStatus('connected');
+                // 直接启动轮询模式，不使用WebSocket
+                return;
+            }
+            
+            this.socket = io({
+                // 优先使用polling，WebSocket作为备选
+                transports: ['polling', 'websocket'],
+                timeout: 10000,
+                reconnection: true,
+                reconnectionAttempts: 3,
+                reconnectionDelay: 2000,
+                reconnectionDelayMax: 5000,
+                forceNew: true,
+                // 快速连接超时，避免长时间挂起
+                connectTimeout: 5000
+            });
+            
+            // 设置连接超时
+            const connectionTimeout = setTimeout(() => {
+                console.warn('WebSocket连接超时，切换到轮询模式');
+                if (this.socket) {
+                    this.socket.disconnect();
+                }
+                this.updateConnectionStatus('connected');
+                this.startStatusPolling();
+            }, 8000);
             
             this.socket.on('connect', () => {
                 console.log('WebSocket连接成功');
+                clearTimeout(connectionTimeout);
                 this.updateConnectionStatus('connected');
+                this.reconnectAttempts = 0;
             });
 
             this.socket.on('disconnect', () => {
-                console.log('WebSocket连接断开');
-                this.updateConnectionStatus('disconnected');
+                console.log('WebSocket连接断开，切换到轮询模式');
+                clearTimeout(connectionTimeout);
+                this.updateConnectionStatus('connected');
+                this.startStatusPolling();
+            });
+
+            this.socket.on('connect_error', (error) => {
+                console.error('WebSocket连接错误，切换到轮询模式:', error);
+                clearTimeout(connectionTimeout);
+                this.updateConnectionStatus('connected');
+                this.startStatusPolling();
             });
 
             this.socket.on('connected', (data) => {
@@ -254,9 +313,23 @@ class DockerSyncApp {
             });
 
         } catch (error) {
-            console.error('WebSocket连接失败:', error);
-            this.updateConnectionStatus('disconnected');
+            console.error('WebSocket初始化失败，使用轮询模式:', error);
+            this.updateConnectionStatus('connected');
+            this.startStatusPolling();
         }
+    }
+
+    // 设置心跳检测
+    setupHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
+        
+        this.heartbeatInterval = setInterval(() => {
+            if (this.socket && this.socket.connected) {
+                this.socket.emit('ping');
+            }
+        }, 30000); // 每30秒发送一次心跳
     }
 
     // 绑定事件处理器
@@ -473,17 +546,26 @@ class DockerSyncApp {
                 });
             }
 
-            // 检查WebSocket连接状态，如果未连接则启用轮询模式
-            if (!this.socket || !this.socket.connected) {
-                console.log('WebSocket未连接，启用轮询模式');
+            // 检查环境并选择合适的进度监控方式
+            const isDockerEnvironment = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+            
+            if (isDockerEnvironment || !this.socket || !this.socket.connected) {
+                // Docker环境或WebSocket未连接：直接使用HTTP轮询
+                console.log('使用HTTP轮询模式监控同步进度');
                 this.addLogEntry({
                     timestamp: new Date().toLocaleString(),
-                    level: 'warning',
-                    message: 'WebSocket连接异常，切换到轮询模式获取进度'
+                    level: 'info',
+                    message: isDockerEnvironment ? '检测到远程环境，使用HTTP轮询模式监控进度...' : 'WebSocket连接异常，使用轮询模式监控进度...'
                 });
                 this.startStatusPolling();
             } else {
                 console.log('WebSocket已连接，使用实时模式');
+                this.addLogEntry({
+                    timestamp: new Date().toLocaleString(),
+                    level: 'info',
+                    message: '使用WebSocket实时监控进度...'
+                });
+                
                 // 启动轮询作为备选方案（3秒后检查）
                 setTimeout(() => {
                     if (this.currentTaskId && !this.hasReceivedWebSocketMessage) {
@@ -588,12 +670,37 @@ class DockerSyncApp {
         } else if (data.status === 'completed') {
             progressBar.classList.add('bg-success');
             this.updateSyncUI(false);
+            // 添加完成后的处理逻辑
+            setTimeout(() => {
+                // 清理当前任务ID
+                this.currentTaskId = null;
+                // 停止状态轮询
+                this.clearPolling();
+                // 刷新文件列表
+                this.loadFilesList();
+                // 添加完成日志
+                this.addLogEntry({
+                    timestamp: new Date().toLocaleString(),
+                    level: 'success',
+                    message: '✅ 同步任务已完成'
+                });
+            }, 1000);
         } else if (data.status === 'failed') {
             progressBar.classList.add('bg-danger');
             this.updateSyncUI(false);
+            // 添加失败后的处理逻辑
+            setTimeout(() => {
+                this.currentTaskId = null;
+                this.clearPolling();
+            }, 1000);
         } else if (data.status === 'cancelled') {
             progressBar.classList.add('bg-warning');
             this.updateSyncUI(false);
+            // 添加取消后的处理逻辑
+            setTimeout(() => {
+                this.currentTaskId = null;
+                this.clearPolling();
+            }, 1000);
         }
     }
 
@@ -754,32 +861,92 @@ class DockerSyncApp {
     async loadFilesList() {
         try {
             const response = await fetch('/api/files');
-            if (!response.ok) {
+            if (response.ok) {
+                this.allFiles = await response.json();
+                this.totalFiles = this.allFiles.length;
+                this.filteredFiles = [...this.allFiles]; // 初始时显示所有文件
+                this.currentPage = 1; // 重置到第一页
+                this.renderFilesList();
+            } else {
                 throw new Error('获取文件列表失败');
             }
-            
-            const files = await response.json();
-            this.renderFilesList(files);
         } catch (error) {
             console.error('加载文件列表失败:', error);
-            this.renderFilesError('加载文件列表失败');
+            const container = document.getElementById('files-container');
+            container.innerHTML = `
+                <div class="text-center text-danger p-4">
+                    <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                    <h5>加载失败</h5>
+                    <p class="small">无法获取文件列表，请检查网络连接后重试</p>
+                    <button class="btn btn-outline-primary btn-sm" onclick="window.dockerSyncApp.loadFilesList()">
+                        <i class="fas fa-sync-alt"></i> 重新加载
+                    </button>
+                </div>
+            `;
         }
     }
 
     // 渲染文件列表
-    renderFilesList(files) {
+    renderFilesList() {
         const container = document.getElementById('files-container');
+        const totalBadge = document.getElementById('files-total-badge');
+        
+        // 使用过滤后的文件列表
+        const files = this.filteredFiles;
+        
+        // 更新文件总数标签
+        if (totalBadge) {
+            const totalFiles = this.allFiles.length;
+            const filteredFiles = files.length;
+            
+            if (filteredFiles === totalFiles) {
+                totalBadge.innerHTML = `<i class="fas fa-folder"></i> ${totalFiles} 个文件`;
+            } else {
+                totalBadge.innerHTML = `<i class="fas fa-filter"></i> ${filteredFiles}/${totalFiles} 个文件`;
+            }
+        }
         
         if (files.length === 0) {
+            const isEmpty = this.allFiles.length === 0;
+            const isFiltered = this.allFiles.length > 0 && files.length === 0;
+            
             container.innerHTML = `
-                <div class="text-center text-muted p-4">
-                    <i class="fas fa-folder-open fa-3x mb-3"></i>
-                    <h5>暂无导出文件</h5>
-                    <p class="small">完成镜像同步后，导出的文件将显示在这里</p>
+                <div class="text-center text-muted p-5">
+                    <div class="empty-state">
+                        ${isEmpty ? `
+                            <i class="fas fa-folder-open fa-3x mb-3 text-primary-light"></i>
+                            <h5 class="text-primary">暂无导出文件</h5>
+                            <p class="text-muted mb-4">完成镜像同步后，导出的文件将显示在这里</p>
+                            <div class="d-flex justify-content-center gap-2">
+                                <span class="badge bg-light text-dark">
+                                    <i class="fas fa-download me-1"></i>同步镜像生成文件
+                                </span>
+                                <span class="badge bg-light text-dark">
+                                    <i class="fas fa-archive me-1"></i>TAR格式导出
+                                </span>
+                                <span class="badge bg-light text-dark">
+                                    <i class="fas fa-code me-1"></i>推送脚本生成
+                                </span>
+                            </div>
+                        ` : `
+                            <i class="fas fa-search fa-3x mb-3 text-warning"></i>
+                            <h5 class="text-warning">未找到匹配的文件</h5>
+                            <p class="text-muted mb-3">当前搜索条件下没有找到任何文件</p>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="clearFileSearch()">
+                                <i class="fas fa-times me-1"></i>清除搜索条件
+                            </button>
+                        `}
+                    </div>
                 </div>
             `;
             return;
         }
+
+        // 计算分页
+        const totalPages = Math.ceil(files.length / this.pageSize);
+        const startIndex = (this.currentPage - 1) * this.pageSize;
+        const endIndex = Math.min(startIndex + this.pageSize, files.length);
+        const currentPageFiles = files.slice(startIndex, endIndex);
 
         // 计算总文件大小和统计信息
         const totalSize = files.reduce((sum, file) => sum + file.size, 0);
@@ -787,147 +954,177 @@ class DockerSyncApp {
         const maxSize = Math.max(...files.map(f => f.size));
 
         let html = `
-            <div class="mb-3">
+            <div class="p-4 border-bottom bg-light">
                 <div class="row align-items-center">
                     <div class="col-md-6">
-                        <div class="d-flex align-items-center">
-                            <button id="select-all-files" class="btn btn-sm btn-outline-primary me-2">
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <button id="select-all-files" class="btn btn-sm btn-outline-primary">
                                 <i class="fas fa-check-square"></i> 全选
                             </button>
-                            <button id="select-none-files" class="btn btn-sm btn-outline-secondary me-2">
+                            <button id="select-none-files" class="btn btn-sm btn-outline-secondary">
                                 <i class="fas fa-square"></i> 全不选
                             </button>
-                            <span class="badge bg-info">
+                            <div class="vr d-none d-md-block"></div>
+                            <span class="badge bg-info file-stats-badge">
                                 <i class="fas fa-file-archive"></i> ${files.length} 个文件
                             </span>
-                            <span class="badge bg-secondary ms-2">
-                                <i class="fas fa-weight-hanging"></i> 总计 ${totalSizeMB} MB
+                            <span class="badge bg-secondary file-stats-badge">
+                                <i class="fas fa-weight-hanging"></i> ${totalSizeMB} MB
                             </span>
                         </div>
                     </div>
-                    <div class="col-md-6 text-end">
-                        <button id="batch-download-selected" class="btn btn-sm btn-success me-1" disabled>
-                            <i class="fas fa-download"></i> 批量下载 (<span id="selected-count">0</span>)
-                        </button>
-                        <button id="delete-selected" class="btn btn-sm btn-danger" disabled>
-                            <i class="fas fa-trash"></i> 删除选中项
-                        </button>
+                    <div class="col-md-6 text-end mt-2 mt-md-0">
+                        <div class="d-flex justify-content-end gap-2">
+                            <button id="batch-download-selected" class="btn btn-sm btn-success" disabled>
+                                <i class="fas fa-download"></i> 
+                                批量下载 (<span id="selected-count">0</span>)
+                            </button>
+                            <button id="delete-selected" class="btn btn-sm btn-danger" disabled>
+                                <i class="fas fa-trash"></i> 
+                                删除选中 (<span id="selected-count-delete">0</span>)
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
-                <!-- 搜索和过滤栏 -->
-                <div class="row mt-2">
+                ${totalPages > 1 ? `
+                <div class="row mt-3 align-items-center">
                     <div class="col-md-6">
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text">
-                                <i class="fas fa-search"></i>
-                            </span>
-                            <input type="text" id="file-search" class="form-control" 
-                                   placeholder="搜索文件名..." onkeyup="filterFiles()">
-                            <button class="btn btn-outline-secondary" type="button" onclick="clearFileSearch()">
-                                <i class="fas fa-times"></i>
-                            </button>
+                        <div class="d-flex align-items-center gap-2">
+                            <small class="text-muted">
+                                显示第 ${startIndex + 1}-${endIndex} 项，共 ${files.length} 项
+                            </small>
+                            <div class="vr"></div>
+                            <select id="page-size-select" class="form-select form-select-sm" style="width: auto;" onchange="changePageSize(this.value)">
+                                <option value="10" ${this.pageSize === 10 ? 'selected' : ''}>10/页</option>
+                                <option value="20" ${this.pageSize === 20 ? 'selected' : ''}>20/页</option>
+                                <option value="50" ${this.pageSize === 50 ? 'selected' : ''}>50/页</option>
+                                <option value="100" ${this.pageSize === 100 ? 'selected' : ''}>100/页</option>
+                            </select>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <div class="d-flex gap-2">
-                            <select id="size-filter" class="form-select form-select-sm" onchange="filterFiles()">
-                                <option value="">所有大小</option>
-                                <option value="small">小文件 (&lt;50MB)</option>
-                                <option value="medium">中等文件 (50-200MB)</option>
-                                <option value="large">大文件 (&gt;200MB)</option>
-                            </select>
-                            <select id="date-filter" class="form-select form-select-sm" onchange="filterFiles()">
-                                <option value="">所有时间</option>
-                                <option value="today">今天</option>
-                                <option value="week">本周</option>
-                                <option value="month">本月</option>
-                            </select>
-                        </div>
+                    <div class="col-md-6 d-flex justify-content-end">
+                        ${this.renderPagination(totalPages)}
                     </div>
                 </div>
+                ` : ''}
             </div>
             <div class="table-responsive">
-                <table class="table table-hover mb-0">
+                <table class="table table-hover mb-0 files-table">
                     <thead class="table-light">
                         <tr>
-                            <th width="40">
+                            <th width="50" class="text-center">
                                 <input type="checkbox" id="select-all-checkbox" class="form-check-input">
                             </th>
-                            <th><i class="fas fa-file"></i> 文件名</th>
-                            <th><i class="fas fa-weight-hanging"></i> 大小</th>
-                            <th><i class="fas fa-clock"></i> 创建时间</th>
-                            <th><i class="fas fa-cogs"></i> 操作</th>
+                            <th>
+                                <i class="fas fa-file text-primary me-1"></i> 文件信息
+                            </th>
+                            <th width="140">
+                                <i class="fas fa-weight-hanging text-info me-1"></i> 文件大小
+                            </th>
+                            <th width="160">
+                                <i class="fas fa-clock text-secondary me-1"></i> 创建时间
+                            </th>
+                            <th width="200" class="text-center">
+                                <i class="fas fa-cogs text-warning me-1"></i> 操作
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
         `;
 
-        files.forEach((file, index) => {
+        currentPageFiles.forEach((file, index) => {
             const createTime = new Date(file.created_time).toLocaleString('zh-CN');
-            const sizePercent = ((file.size / maxSize) * 100).toFixed(1);
+            const sizePercent = Math.min(((file.size / maxSize) * 100), 100).toFixed(1);
             
             // 主要文件行
             html += `
-                <tr data-file-index="${index}" class="file-row">
-                    <td>
+                <tr data-file-index="${startIndex + index}" class="file-row">
+                    <td class="text-center">
                         <input type="checkbox" class="file-checkbox form-check-input" 
                                data-filename="${file.name}" 
                                data-download-url="${file.download_url}">
                     </td>
                     <td>
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-file-archive text-primary me-2"></i>
-                            <div>
-                                <div class="fw-medium">${this.escapeHtml(file.name)}</div>
-                                ${file.script ? '<small class="text-success"><i class="fas fa-file-code"></i> 包含推送脚本</small>' : ''}
+                        <div class="d-flex align-items-start">
+                            <div class="file-icon-wrapper me-3">
+                                <i class="fas fa-file-archive fa-2x text-primary"></i>
+                                ${file.script ? '<i class="fas fa-file-code fa-sm text-success file-script-badge"></i>' : ''}
+                            </div>
+                            <div class="file-info">
+                                <div class="file-name fw-bold text-primary mb-1">${this.escapeHtml(file.name)}</div>
+                                <div class="file-meta">
+                                    ${file.script ? 
+                                        '<span class="badge bg-success-soft text-success me-2"><i class="fas fa-file-code me-1"></i>包含推送脚本</span>' : ''
+                                    }
+                                    <span class="badge bg-info-soft text-info">
+                                        <i class="fas fa-archive me-1"></i>TAR格式
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </td>
                     <td>
                         <div class="file-size-info">
-                            <div class="d-flex align-items-center mb-1">
-                                <span class="badge bg-info me-2">${file.size_mb} MB</span>
-                                <div class="progress flex-grow-1" style="height: 4px;">
-                                    <div class="progress-bar bg-info" style="width: ${sizePercent}%"></div>
-                                </div>
+                            <div class="d-flex align-items-center mb-2">
+                                <span class="badge bg-info-gradient me-2 file-size-badge">
+                                    ${file.size_mb} MB
+                                </span>
                             </div>
-                            ${file.script ? `<small class="text-muted">${(file.script.size / 1024).toFixed(1)} KB 脚本</small>` : ''}
+                            <div class="progress file-size-progress">
+                                <div class="progress-bar bg-gradient" 
+                                     style="width: ${sizePercent}%" 
+                                     title="相对大小: ${sizePercent}%"></div>
+                            </div>
+                            ${file.script ? `
+                                <small class="text-muted d-block mt-1">
+                                    <i class="fas fa-file-code me-1"></i>
+                                    ${(file.script.size / 1024).toFixed(1)} KB 脚本
+                                </small>
+                            ` : ''}
                         </div>
                     </td>
                     <td>
-                        <small class="text-muted">${createTime}</small>
+                        <div class="time-info">
+                            <small class="text-muted d-block">${createTime}</small>
+                            <small class="text-primary">${this.getTimeAgo(file.created_time)}</small>
+                        </div>
                     </td>
                     <td>
-                        <div class="btn-group-vertical btn-group-sm w-100">
-                            <div class="btn-group btn-group-sm mb-1">
-                                <a href="${file.download_url}" class="btn btn-success btn-sm" title="下载tar包">
-                                    <i class="fas fa-download"></i> 下载
-                                </a>
-                                <button class="btn btn-outline-secondary btn-sm" 
-                                        onclick="copyLoadCommand('${file.name}')" 
-                                        title="复制docker load命令">
-                                    <i class="fas fa-copy"></i> 导入命令
+                        <div class="action-buttons">
+                            <div class="btn-group-vertical w-100 gap-1">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="${file.download_url}" 
+                                       class="btn btn-success btn-sm action-btn" 
+                                       title="下载TAR文件">
+                                        <i class="fas fa-download"></i> 下载
+                                    </a>
+                                    <button class="btn btn-outline-secondary btn-sm action-btn" 
+                                            onclick="copyLoadCommand('${file.name}')" 
+                                            title="复制docker load命令">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                                ${file.script ? `
+                                <div class="btn-group btn-group-sm">
+                                    <a href="${file.script.download_url}" 
+                                       class="btn btn-outline-success btn-sm action-btn" 
+                                       title="下载推送脚本">
+                                        <i class="fas fa-file-code"></i> 脚本
+                                    </a>
+                                    <button class="btn btn-outline-info btn-sm action-btn" 
+                                            onclick="copyTagCommand('${file.script.name}')" 
+                                            title="复制脚本执行命令">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                                ` : ''}
+                                <button class="btn btn-danger btn-sm action-btn w-100" 
+                                        onclick="deleteFile('${file.name}')" 
+                                        title="删除文件">
+                                    <i class="fas fa-trash"></i> 删除
                                 </button>
                             </div>
-                            ${file.script ? `
-                            <div class="btn-group btn-group-sm mb-1">
-                                <a href="${file.script.download_url}" class="btn btn-outline-success btn-sm" 
-                                   title="下载推送脚本">
-                                    <i class="fas fa-file-code"></i> 下载脚本
-                                </a>
-                                <button class="btn btn-outline-info btn-sm" 
-                                        onclick="copyTagCommand('${file.script.name}')" 
-                                        title="复制执行脚本命令">
-                                    <i class="fas fa-copy"></i> 脚本命令
-                                </button>
-                            </div>
-                            ` : ''}
-                            <button class="btn btn-danger btn-sm" 
-                                    onclick="deleteFile('${file.name}')" 
-                                    title="删除文件">
-                                <i class="fas fa-trash"></i> 删除
-                            </button>
                         </div>
                     </td>
                 </tr>
@@ -938,47 +1135,114 @@ class DockerSyncApp {
                     </tbody>
                 </table>
             </div>
-            <div class="mt-3 p-3 bg-light rounded">
-                <div class="row">
-                    <div class="col-md-4">
-                        <h6><i class="fas fa-info-circle text-primary"></i> 快速操作</h6>
-                        <ul class="small mb-2">
-                            <li><strong>批量下载：</strong>勾选文件后点击"批量下载"</li>
-                            <li><strong>快速导入：</strong>点击"导入命令"复制docker load命令</li>
-                            <li><strong>自动推送：</strong>使用推送脚本自动标记并推送镜像</li>
-                        </ul>
-                    </div>
-                    <div class="col-md-4">
-                        <h6><i class="fas fa-magic text-success"></i> 智能功能</h6>
-                        <ul class="small mb-2">
-                            <li><strong>脚本生成：</strong>批量下载时自动生成推送脚本</li>
-                            <li><strong>参数化配置：</strong>脚本支持命令行参数</li>
-                            <li><strong>多仓库支持：</strong>可指定不同目标仓库</li>
-                        </ul>
-                    </div>
-                    <div class="col-md-4">
-                        <h6><i class="fas fa-shield-alt text-warning"></i> 安全特性</h6>
-                        <ul class="small mb-2">
-                            <li><strong>安全复制：</strong>多层级复制策略确保兼容性</li>
-                            <li><strong>自动清理：</strong>默认保留1天，避免磁盘占满</li>
-                            <li><strong>权限控制：</strong>仅复制命令，不直接执行</li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="alert alert-info small mb-0">
-                    <strong>💡 推荐工作流：</strong>
-                    1. 选择需要的文件 → 2. 批量下载(含脚本) → 3. 在目标环境执行脚本 → 4. 自动完成导入和推送
-                </div>
-            </div>
         `;
 
         container.innerHTML = html;
         
-        // 绑定批量操作事件
+        // 绑定事件
         this.bindBatchOperationEvents();
-        
-        // 添加文件行悬停效果
         this.addFileRowInteractions();
+    }
+    
+    // 辅助函数：获取时间距离现在的描述
+    getTimeAgo(timestamp) {
+        const now = new Date();
+        const time = new Date(timestamp);
+        const diffMs = now - time;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        
+        if (diffMins < 1) return '刚刚';
+        if (diffMins < 60) return `${diffMins}分钟前`;
+        if (diffHours < 24) return `${diffHours}小时前`;
+        if (diffDays < 7) return `${diffDays}天前`;
+        return time.toLocaleDateString('zh-CN');
+    }
+
+    // 渲染分页控件
+    renderPagination(totalPages) {
+        let paginationHtml = '<nav><ul class="pagination pagination-sm mb-0">';
+        
+        // 上一页
+        paginationHtml += `
+            <li class="page-item ${this.currentPage === 1 ? 'disabled' : ''}">
+                <button class="page-link" onclick="changePage(${this.currentPage - 1})" ${this.currentPage === 1 ? 'disabled' : ''}>
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+            </li>
+        `;
+        
+        // 页码
+        const maxVisiblePages = 5;
+        let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePages / 2));
+        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+        
+        // 调整起始页
+        if (endPage - startPage < maxVisiblePages - 1) {
+            startPage = Math.max(1, endPage - maxVisiblePages + 1);
+        }
+        
+        // 第一页
+        if (startPage > 1) {
+            paginationHtml += `
+                <li class="page-item">
+                    <button class="page-link" onclick="changePage(1)">1</button>
+                </li>
+            `;
+            if (startPage > 2) {
+                paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+        }
+        
+        // 中间页码
+        for (let i = startPage; i <= endPage; i++) {
+            paginationHtml += `
+                <li class="page-item ${i === this.currentPage ? 'active' : ''}">
+                    <button class="page-link" onclick="changePage(${i})">${i}</button>
+                </li>
+            `;
+        }
+        
+        // 最后一页
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                paginationHtml += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+            paginationHtml += `
+                <li class="page-item">
+                    <button class="page-link" onclick="changePage(${totalPages})">${totalPages}</button>
+                </li>
+            `;
+        }
+        
+        // 下一页
+        paginationHtml += `
+            <li class="page-item ${this.currentPage === totalPages ? 'disabled' : ''}">
+                <button class="page-link" onclick="changePage(${this.currentPage + 1})" ${this.currentPage === totalPages ? 'disabled' : ''}>
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </li>
+        `;
+        
+        paginationHtml += '</ul></nav>';
+        return paginationHtml;
+    }
+
+    // 改变页码
+    changePage(page) {
+        const totalPages = Math.ceil(this.filteredFiles.length / this.pageSize);
+        if (page >= 1 && page <= totalPages) {
+            this.currentPage = page;
+            this.renderFilesList();
+        }
+    }
+
+    // 改变每页大小
+    changePageSize(newPageSize) {
+        this.pageSize = parseInt(newPageSize);
+        this.currentPage = 1; // 重置到第一页
+        this.renderFilesList();
     }
 
     // 渲染文件列表错误
@@ -1433,20 +1697,47 @@ class DockerSyncApp {
                 requestData.target_registry = targetRegistry;
             }
             
+            // 增加超时控制
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 120000); // 2分钟超时
+            
             const response = await fetch('/api/files/batch-download', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(requestData)
+                body: JSON.stringify(requestData),
+                signal: controller.signal
             });
             
+            clearTimeout(timeoutId);
+            
+            // 检查响应是否成功
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || '创建压缩包失败');
+                let errorMessage = '创建压缩包失败';
+                
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch (parseError) {
+                    // 如果不是JSON响应，可能是HTML错误页面
+                    const responseText = await response.text();
+                    if (responseText.includes('<html>')) {
+                        errorMessage = `服务器错误 (${response.status}): ${response.statusText}`;
+                    } else {
+                        errorMessage = responseText || errorMessage;
+                    }
+                }
+                
+                throw new Error(errorMessage);
             }
             
             const result = await response.json();
+            
+            // 验证返回数据的完整性
+            if (!result.zip_filename || !result.download_url) {
+                throw new Error('服务器返回的数据不完整');
+            }
             
             // 更新状态为成功
             const statusDiv = document.getElementById('batch-download-status');
@@ -1455,7 +1746,10 @@ class DockerSyncApp {
             const downloadScriptBtn = document.getElementById('download-script-btn');
             
             if (statusDiv) {
-                let message = `<i class="fas fa-check-circle"></i> 压缩包创建成功！包含 ${result.file_count} 个文件`;
+                let message = `<i class="fas fa-check-circle"></i> 压缩包创建成功！`;
+                message += `<br><i class="fas fa-info-circle text-info"></i> 文件名: ${result.zip_filename}`;
+                message += `<br><i class="fas fa-weight-hanging text-info"></i> 大小: ${result.zip_size_mb || 'N/A'} MB`;
+                message += `<br><i class="fas fa-file-archive text-success"></i> 包含 ${result.file_count} 个文件`;
                 
                 if (result.script && result.script.target_registry) {
                     message += `<br><i class="fas fa-file-code text-success"></i> 推送脚本已生成 (目标: ${result.script.target_registry})`;
@@ -1497,10 +1791,21 @@ class DockerSyncApp {
             // 更新状态为失败
             const statusDiv = document.getElementById('batch-download-status');
             if (statusDiv) {
+                let errorMessage = '创建压缩包失败';
+                
+                if (error.name === 'AbortError') {
+                    errorMessage = '操作超时，请检查文件大小并重试';
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+                
                 statusDiv.className = 'alert alert-danger';
                 statusDiv.innerHTML = `
                     <i class="fas fa-exclamation-circle"></i>
-                    创建压缩包失败: ${error.message}
+                    ${errorMessage}
+                    <br><small class="text-muted mt-2">
+                        建议：检查磁盘空间、文件权限或减少选择的文件数量
+                    </small>
                 `;
             }
         }
@@ -2081,111 +2386,105 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 文件搜索和过滤功能
     function filterFiles() {
-        const searchTerm = document.getElementById('file-search').value.toLowerCase();
-        const sizeFilter = document.getElementById('size-filter').value;
-        const dateFilter = document.getElementById('date-filter').value;
+        const searchTerm = document.getElementById('file-search')?.value?.toLowerCase() || '';
+        const sizeFilter = document.getElementById('size-filter')?.value || '';
+        const dateFilter = document.getElementById('date-filter')?.value || '';
         
-        const rows = document.querySelectorAll('.file-row');
-        let visibleCount = 0;
+        if (!window.dockerSyncApp) return;
         
-        rows.forEach(row => {
-            const filename = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
-            const sizeText = row.querySelector('.badge.bg-info').textContent;
-            const sizeMB = parseFloat(sizeText.replace(' MB', ''));
-            const dateText = row.querySelector('td:nth-child(4) small').textContent;
-            const fileDate = new Date(dateText);
-            
-            let showRow = true;
-            
-            // 文件名搜索
-            if (searchTerm && !filename.includes(searchTerm)) {
-                showRow = false;
-            }
-            
-            // 大小过滤
-            if (sizeFilter) {
-                switch (sizeFilter) {
-                    case 'small':
-                        if (sizeMB >= 50) showRow = false;
-                        break;
-                    case 'medium':
-                        if (sizeMB < 50 || sizeMB > 200) showRow = false;
-                        break;
-                    case 'large':
-                        if (sizeMB <= 200) showRow = false;
-                        break;
-                }
-            }
-            
-            // 日期过滤
-            if (dateFilter) {
-                const now = new Date();
-                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-                const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+        // 从所有文件中过滤
+        const allFiles = window.dockerSyncApp.allFiles;
+        let filteredFiles = allFiles.filter(file => {
+            try {
+                let showFile = true;
                 
-                switch (dateFilter) {
-                    case 'today':
-                        if (fileDate < today) showRow = false;
-                        break;
-                    case 'week':
-                        if (fileDate < weekAgo) showRow = false;
-                        break;
-                    case 'month':
-                        if (fileDate < monthAgo) showRow = false;
-                        break;
+                // 文件名搜索
+                if (searchTerm && !file.name.toLowerCase().includes(searchTerm)) {
+                    showFile = false;
                 }
-            }
-            
-            if (showRow) {
-                row.style.display = '';
-                visibleCount++;
-            } else {
-                row.style.display = 'none';
-                // 取消选中隐藏的文件
-                const checkbox = row.querySelector('.file-checkbox');
-                if (checkbox && checkbox.checked) {
-                    checkbox.checked = false;
+                
+                // 大小过滤
+                if (sizeFilter && !isNaN(file.size_mb)) {
+                    switch (sizeFilter) {
+                        case 'small':
+                            if (file.size_mb >= 50) showFile = false;
+                            break;
+                        case 'medium':
+                            if (file.size_mb < 50 || file.size_mb > 200) showFile = false;
+                            break;
+                        case 'large':
+                            if (file.size_mb <= 200) showFile = false;
+                            break;
+                    }
                 }
+                
+                // 日期过滤
+                if (dateFilter) {
+                    const fileDate = new Date(file.created_time);
+                    if (!isNaN(fileDate.getTime())) {
+                        const now = new Date();
+                        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                        const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+                        
+                        switch (dateFilter) {
+                            case 'today':
+                                if (fileDate < today) showFile = false;
+                                break;
+                            case 'week':
+                                if (fileDate < weekAgo) showFile = false;
+                                break;
+                            case 'month':
+                                if (fileDate < monthAgo) showFile = false;
+                                break;
+                        }
+                    }
+                }
+                
+                return showFile;
+            } catch (error) {
+                console.warn('过滤文件时出错:', error);
+                return true; // 出错时默认显示
             }
         });
         
-        // 更新显示的文件计数
-        updateFilteredFileCount(visibleCount);
-        
-        // 更新选中计数
-        if (window.dockerSyncApp) {
-            window.dockerSyncApp.updateSelectedCount();
-        }
+        // 更新过滤后的文件列表
+        window.dockerSyncApp.filteredFiles = filteredFiles;
+        window.dockerSyncApp.currentPage = 1; // 重置到第一页
+        window.dockerSyncApp.renderFilesList();
     }
 
     // 清除搜索
     function clearFileSearch() {
-        document.getElementById('file-search').value = '';
-        document.getElementById('size-filter').value = '';
-        document.getElementById('date-filter').value = '';
+        const searchInput = document.getElementById('file-search');
+        const sizeFilter = document.getElementById('size-filter');
+        const dateFilter = document.getElementById('date-filter');
+        
+        if (searchInput) searchInput.value = '';
+        if (sizeFilter) sizeFilter.value = '';
+        if (dateFilter) dateFilter.value = '';
+        
         filterFiles();
     }
 
-    // 更新过滤后的文件计数显示
+    // 更新过滤后的文件计数显示（此函数不再需要，由renderFilesList处理）
     function updateFilteredFileCount(visibleCount) {
-        const totalFiles = document.querySelectorAll('.file-row').length;
-        const fileCountBadge = document.querySelector('.badge.bg-info');
-        
-        if (fileCountBadge) {
-            if (visibleCount === totalFiles) {
-                fileCountBadge.innerHTML = `<i class="fas fa-file-archive"></i> ${totalFiles} 个文件`;
-            } else {
-                fileCountBadge.innerHTML = `<i class="fas fa-file-archive"></i> ${visibleCount}/${totalFiles} 个文件`;
-                fileCountBadge.classList.remove('bg-info');
-                fileCountBadge.classList.add('bg-warning');
-            }
-        }
+        // 保留为空函数以兼容现有代码
     }
 
     // 添加到全局
     window.filterFiles = filterFiles;
     window.clearFileSearch = clearFileSearch;
+    window.changePage = function(page) {
+        if (window.dockerSyncApp) {
+            window.dockerSyncApp.changePage(page);
+        }
+    };
+    window.changePageSize = function(newPageSize) {
+        if (window.dockerSyncApp) {
+            window.dockerSyncApp.changePageSize(newPageSize);
+        }
+    };
 });
 
 // 控制私有认证区域的显示/隐藏
@@ -2225,4 +2524,38 @@ function toggleProxy() {
         document.getElementById('proxy-https').value = '';
         document.getElementById('proxy-no-proxy').value = '';
     }
-} 
+}
+
+// 防抖函数 - 避免频繁触发搜索
+let searchTimeout = null;
+function debounceFilterFiles() {
+    // 清除之前的定时器
+    if (searchTimeout) {
+        clearTimeout(searchTimeout);
+    }
+    
+    // 设置新的定时器，延迟500毫秒执行搜索
+    searchTimeout = setTimeout(() => {
+        filterFiles();
+    }, 500);
+}
+
+// 添加到全局对象
+window.debounceFilterFiles = debounceFilterFiles;
+
+// 手动搜索函数
+function performSearch() {
+    filterFiles();
+}
+
+// 处理回车键搜索
+function handleSearchKeyPress(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        performSearch();
+    }
+}
+
+// 添加到全局对象
+window.performSearch = performSearch;
+window.handleSearchKeyPress = handleSearchKeyPress;

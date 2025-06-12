@@ -171,7 +171,7 @@ start_service() {
         log_info "生产模式启动..."
         
         if command -v gunicorn &> /dev/null; then
-            gunicorn --worker-class eventlet -w 1 --bind $host:$port app:app
+            gunicorn --worker-class eventlet -w 1 --bind $host:$port --timeout 300 --max-requests 1000 --max-requests-jitter 100 --preload app:app
         else
             log_warn "Gunicorn未安装，使用开发模式启动..."
             export FLASK_ENV=production
