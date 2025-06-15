@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>仓库管理 - Docker镜像同步工具</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/all.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .registry-icon {
             width: 40px;
@@ -318,6 +318,7 @@
     <script>
         // 仓库管理功能
         let currentEditingRegistryId = null;
+        let registriesList = [];
 
         // 切换密码可见性
         function togglePassword(inputId) {
@@ -371,7 +372,17 @@
         function showEditRegistryModal(registryId) {
             currentEditingRegistryId = registryId;
             document.getElementById('registryModalTitle').innerHTML = '<i class="fas fa-edit me-2"></i>编辑仓库配置';
-            
+            const registry = registriesList[registryId];
+            document.getElementById('registry-name').value = registry.name || '';
+            document.getElementById('registry-type').value = registry.type || '';
+            document.getElementById('registry-url').value = registry.url || '';
+            document.getElementById('registry-username').value = registry.username || '';
+            document.getElementById('registry-password').value = registry.password || '';
+            document.getElementById('registry-namespace').value = registry.namespace || registry.project || '';
+            document.getElementById('registry-insecure').checked = !!registry.insecure;
+            document.getElementById('registry-active').checked = registry.active !== false;
+            document.getElementById('registry-description').value = registry.description || '';
+            updateRegistryFields();
             const modal = new bootstrap.Modal(document.getElementById('registryModal'));
             modal.show();
         }
@@ -385,9 +396,125 @@
             modal.show();
         }
 
+        // 获取仓库类型对应的徽章样式
+        function getRegistryTypeBadge(type) {
+            const badges = {
+                'harbor': 'primary',
+                'acr': 'success',
+                'swr': 'info',
+                'tcr': 'warning',
+                'nexus': 'secondary',
+                'local_file': 'dark',
+                'other': 'light'
+            };
+            return badges[type] || 'light';
+        }
+
+        // 获取仓库类型的中文名称
+        function getRegistryTypeName(type) {
+            const names = {
+                'harbor': 'Harbor',
+                'acr': '阿里云ACR',
+                'swr': '华为云SWR',
+                'tcr': '腾讯云TCR',
+                'nexus': 'Nexus',
+                'local_file': '本地文件',
+                'other': '其他'
+            };
+            return names[type] || '未知类型';
+        }
+
+        // 更新统计信息
+        function updateStatistics(registries) {
+            document.getElementById('total-registries').textContent = registries.length;
+            
+            const typeCounts = registries.reduce((acc, registry) => {
+                acc[registry.type] = (acc[registry.type] || 0) + 1;
+                return acc;
+            }, {});
+            
+            document.getElementById('harbor-count').textContent = typeCounts.harbor || 0;
+            document.getElementById('acr-count').textContent = typeCounts.acr || 0;
+            document.getElementById('other-count').textContent = 
+                registries.length - (typeCounts.harbor || 0) - (typeCounts.acr || 0);
+        }
+
         // 刷新仓库列表
-        function refreshRegistriesList() {
-            console.log('刷新仓库列表');
+        async function refreshRegistriesList() {
+            try {
+                const response = await fetch('/api/admin/registries');
+                if (!response.ok) {
+                    throw new Error('获取仓库列表失败');
+                }
+                
+                const registries = await response.json();
+                registriesList = registries;
+                
+                // 更新统计信息
+                updateStatistics(registries);
+                
+                if (registries.length === 0) {
+                    document.getElementById('registries-container').innerHTML = `
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                暂无仓库配置，点击"添加仓库"按钮创建新的配置。
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // 生成仓库列表HTML
+                const html = registries.map((registry, index) => `
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-server me-2"></i>
+                                    ${registry.name}
+                                </h5>
+                                <span class="badge bg-${getRegistryTypeBadge(registry.type)}">
+                                    ${getRegistryTypeName(registry.type)}
+                                </span>
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text">
+                                    <strong>地址：</strong> ${registry.url}<br>
+                                    ${registry.username ? `<strong>用户名：</strong> ${registry.username}<br>` : ''}
+                                    ${registry.project ? `<strong>项目：</strong> ${registry.project}<br>` : ''}
+                                    ${registry.namespace ? `<strong>命名空间：</strong> ${registry.namespace}<br>` : ''}
+                                    ${registry.repository ? `<strong>仓库：</strong> ${registry.repository}<br>` : ''}
+                                    ${registry.description ? `<strong>描述：</strong> ${registry.description}` : ''}
+                                </p>
+                            </div>
+                            <div class="card-footer">
+                                <div class="btn-group w-100">
+                                    <button class="btn btn-outline-primary" onclick="showEditRegistryModal(${index})">
+                                        <i class="fas fa-edit me-2"></i>编辑
+                                    </button>
+                                    <button class="btn btn-outline-danger" onclick="showDeleteRegistryModal(${index}, '${registry.name}')">
+                                        <i class="fas fa-trash me-2"></i>删除
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('registries-container').innerHTML = html;
+                
+            } catch (error) {
+                console.error('刷新仓库列表失败:', error);
+                document.getElementById('registries-container').innerHTML = `
+                    <div class="col-12">
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            加载仓库列表失败，请刷新页面重试。
+                        </div>
+                    </div>
+                `;
+            }
         }
 
         // 登出功能
@@ -400,15 +527,72 @@
         // 页面初始化
         document.addEventListener('DOMContentLoaded', function() {
             console.log('仓库管理页面已加载');
+            refreshRegistriesList();
             
-            // 模拟加载仓库列表
-            setTimeout(() => {
-                document.getElementById('registries-container').innerHTML = `
-                    <div class="col-12">
-                        <p class="text-muted text-center">仓库配置功能正在开发中...</p>
-                    </div>
-                `;
-            }, 1000);
+            // 表单提交事件
+            document.getElementById('registryForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const name = document.getElementById('registry-name').value.trim();
+                const type = document.getElementById('registry-type').value;
+                const url = document.getElementById('registry-url').value.trim();
+                const username = document.getElementById('registry-username').value.trim();
+                const password = document.getElementById('registry-password').value;
+                const namespace = document.getElementById('registry-namespace').value.trim();
+                const insecure = document.getElementById('registry-insecure').checked;
+                const active = document.getElementById('registry-active').checked;
+                const description = document.getElementById('registry-description').value.trim();
+                // 组装数据
+                const data = {
+                    name, type, url, username, password,
+                    namespace, insecure, active, description
+                };
+                let method = 'POST';
+                let api = '/api/admin/registries';
+                if (currentEditingRegistryId !== null) {
+                    method = 'PUT';
+                    api = `/api/admin/registries/${currentEditingRegistryId}`;
+                }
+                try {
+                    const resp = await fetch(api, {
+                        method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    const result = await resp.json();
+                    if (resp.ok && result.success) {
+                        alert(result.message || '操作成功');
+                        bootstrap.Modal.getInstance(document.getElementById('registryModal')).hide();
+                        refreshRegistriesList();
+                    } else {
+                        alert(result.error || '操作失败');
+                    }
+                } catch (err) {
+                    alert('请求失败，请重试');
+                }
+            });
+
+            // 删除确认按钮点击事件
+            document.getElementById('confirm-delete-registry-btn').addEventListener('click', async function() {
+                if (currentEditingRegistryId === null) return;
+                
+                try {
+                    const response = await fetch(`/api/admin/registries/${currentEditingRegistryId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const result = await response.json();
+                    if (response.ok && result.success) {
+                        alert(result.message || '删除成功');
+                        bootstrap.Modal.getInstance(document.getElementById('deleteRegistryModal')).hide();
+                        refreshRegistriesList();
+                    } else {
+                        alert(result.error || '删除失败');
+                    }
+                } catch (error) {
+                    console.error('删除仓库失败:', error);
+                    alert('删除失败，请重试');
+                }
+            });
         });
     </script>
 </body>

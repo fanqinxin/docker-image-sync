@@ -31,6 +31,47 @@ logger = logging.getLogger(__name__)
 # 全局变量存储同步任务状态
 sync_tasks = {}
 
+# 仓库配置管理类
+class RegistryConfig:
+    """私服配置管理类"""
+    def __init__(self, config_file='config/registries.yaml'):
+        self.config_file = config_file
+        self.registries = self.load_config()
+    
+    def load_config(self):
+        """加载私服配置"""
+        try:
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                return config.get('registries', [])
+        except FileNotFoundError:
+            logger.warning(f"配置文件 {self.config_file} 不存在，使用默认配置")
+            return self.get_default_config()
+        except Exception as e:
+            logger.error(f"加载配置文件失败: {e}")
+            return self.get_default_config()
+    
+    def get_default_config(self):
+        """默认配置"""
+        return [
+            {
+                'name': 'Harbor私服',
+                'type': 'harbor',
+                'url': 'harbor.example.com',
+                'username': 'admin',
+                'password': 'Harbor12345',
+                'project': 'library'
+            },
+            {
+                'name': '阿里云ACR',
+                'type': 'acr',
+                'url': 'registry.cn-hangzhou.aliyuncs.com',
+                'username': 'your-username',
+                'password': 'your-password',
+                'namespace': 'your-namespace'
+            }
+        ]
+
 class UserManager:
     """用户管理类"""
     def __init__(self, config_file='config/users.yaml'):
@@ -241,46 +282,8 @@ def admin_required(f):
 
 # 创建用户管理实例
 user_manager = UserManager()
-
-class RegistryConfig:
-    """私服配置管理类"""
-    def __init__(self, config_file='config/registries.yaml'):
-        self.config_file = config_file
-        self.registries = self.load_config()
-    
-    def load_config(self):
-        """加载私服配置"""
-        try:
-            with open(self.config_file, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-                return config.get('registries', [])
-        except FileNotFoundError:
-            logger.warning(f"配置文件 {self.config_file} 不存在，使用默认配置")
-            return self.get_default_config()
-        except Exception as e:
-            logger.error(f"加载配置文件失败: {e}")
-            return self.get_default_config()
-    
-    def get_default_config(self):
-        """默认配置"""
-        return [
-            {
-                'name': 'Harbor私服',
-                'type': 'harbor',
-                'url': 'harbor.example.com',
-                'username': 'admin',
-                'password': 'Harbor12345',
-                'project': 'library'
-            },
-            {
-                'name': '阿里云ACR',
-                'type': 'acr',
-                'url': 'registry.cn-hangzhou.aliyuncs.com',
-                'username': 'your-username',
-                'password': 'your-password',
-                'namespace': 'your-namespace'
-            }
-        ]
+# 创建仓库配置管理实例
+registry_config = RegistryConfig()
 
 class ImageSyncer:
     """镜像同步类"""
@@ -1932,30 +1935,36 @@ def auto_cleanup_downloads():
             logger.debug("下载目录不存在，跳过自动清理")
             return
         
-        # 24小时清理策略
-        max_age_hours = 24
+        # 从环境变量读取配置
+        max_age_hours = int(os.getenv('MAX_FILE_AGE', 24))  # 默认24小时
         current_time = time.time()
         cleanup_count = 0
         
-        logger.info("开始自动清理下载目录中的旧文件...")
+        logger.info(f"开始自动清理下载目录中的旧文件... (保留{max_age_hours}小时内的文件)")
         
         # 获取所有文件
         files_to_process = []
-        for filename in os.listdir(downloads_dir):
-            file_path = os.path.join(downloads_dir, filename)
-            if os.path.isfile(file_path):
-                try:
-                    file_mtime = os.path.getmtime(file_path)
-                    file_age_hours = (current_time - file_mtime) / 3600
-                    files_to_process.append((filename, file_path, file_age_hours))
-                except OSError as e:
-                    logger.warning(f"无法获取文件 {filename} 的修改时间: {e}")
-                    continue
+        try:
+            for filename in os.listdir(downloads_dir):
+                file_path = os.path.join(downloads_dir, filename)
+                if os.path.isfile(file_path):
+                    try:
+                        file_mtime = os.path.getmtime(file_path)
+                        file_age_hours = (current_time - file_mtime) / 3600
+                        files_to_process.append((filename, file_path, file_age_hours))
+                    except OSError as e:
+                        logger.warning(f"无法获取文件 {filename} 的修改时间: {e}")
+                        continue
+        except Exception as e:
+            logger.error(f"无法读取下载目录: {e}")
+            return 0
+        
+        logger.info(f"发现 {len(files_to_process)} 个文件待检查")
         
         # 按文件年龄排序
         files_to_process.sort(key=lambda x: x[2], reverse=True)  # 最老的文件在前
         
-        # 清理超过24小时的文件
+        # 清理超过指定时间的文件
         for filename, file_path, file_age_hours in files_to_process:
             if file_age_hours > max_age_hours:
                 try:
@@ -1971,25 +1980,27 @@ def auto_cleanup_downloads():
                 except Exception as e:
                     logger.warning(f"删除文件 {filename} 失败: {e}")
         
-        if cleanup_count > 0:
-            logger.info(f"自动清理完成，删除了 {cleanup_count} 个过期文件")
-        else:
-            logger.debug("自动清理完成，没有发现过期文件")
+        # 始终输出清理结果
+        logger.info(f"自动清理完成，删除了 {cleanup_count} 个过期文件")
             
         # 检查剩余文件数量，如果太多则保留最新的100个
         remaining_files = []
-        for filename in os.listdir(downloads_dir):
-            file_path = os.path.join(downloads_dir, filename)
-            if os.path.isfile(file_path):
-                try:
-                    file_mtime = os.path.getmtime(file_path)
-                    remaining_files.append((filename, file_path, file_mtime))
-                except OSError:
-                    continue
+        try:
+            for filename in os.listdir(downloads_dir):
+                file_path = os.path.join(downloads_dir, filename)
+                if os.path.isfile(file_path):
+                    try:
+                        file_mtime = os.path.getmtime(file_path)
+                        remaining_files.append((filename, file_path, file_mtime))
+                    except OSError:
+                        continue
+        except Exception as e:
+            logger.warning(f"检查剩余文件时出错: {e}")
         
         # 如果剩余文件超过100个，删除最旧的
         max_files = 100
         if len(remaining_files) > max_files:
+            logger.info(f"发现 {len(remaining_files)} 个文件超过最大保留数量 {max_files}，开始清理多余文件")
             remaining_files.sort(key=lambda x: x[2])  # 按时间排序，最旧在前
             files_to_delete = remaining_files[:len(remaining_files) - max_files]
             
@@ -2013,23 +2024,16 @@ def auto_cleanup_downloads():
         return 0
 
 def start_cleanup_scheduler():
-    """启动清理调度器"""
-    import threading
-    import schedule
-    
-    # 每6小时执行一次清理
-    schedule.every(6).hours.do(auto_cleanup_downloads)
+    """启动定时清理任务"""
+    cleanup_interval = int(os.getenv('CLEANUP_INTERVAL', 6))  # 默认6小时
+    max_age_hours = int(os.getenv('MAX_FILE_AGE', 24))  # 默认24小时
+    schedule.every(cleanup_interval).hours.do(auto_cleanup_downloads)
     
     def run_scheduler():
         while True:
-            try:
-                schedule.run_pending()
-                time.sleep(3600)  # 每小时检查一次
-            except Exception as e:
-                logger.error(f"调度器执行出错: {e}")
-                time.sleep(3600)  # 出错后等待1小时再继续
+            schedule.run_pending()
+            time.sleep(60)
     
-    # 在后台线程中运行调度器
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
     
@@ -2044,7 +2048,7 @@ def start_cleanup_scheduler():
     initial_cleanup_thread = threading.Thread(target=initial_cleanup, daemon=True)
     initial_cleanup_thread.start()
     
-    logger.info("下载目录自动清理调度器已启动 (每6小时运行一次，保留24小时内文件)")
+    logger.info(f"下载目录自动清理调度器已启动 (每{cleanup_interval}小时运行一次，保留{max_age_hours}小时内文件)")
 
 # 手动清理API
 @app.route('/api/files/auto-cleanup', methods=['POST'])
