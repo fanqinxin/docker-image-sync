@@ -2256,7 +2256,9 @@ def create_registry():
             'project': data.get('project', ''),
             'namespace': data.get('namespace', ''),
             'repository': data.get('repository', ''),
-            'description': data.get('description', '')
+            'description': data.get('description', ''),
+            'insecure': data.get('insecure', False),
+            'active': data.get('active', True)
         }
         
         registry_config.registries.append(new_registry)
@@ -2305,7 +2307,9 @@ def update_registry(registry_index):
             'project': data.get('project', ''),
             'namespace': data.get('namespace', ''),
             'repository': data.get('repository', ''),
-            'description': data.get('description', '')
+            'description': data.get('description', ''),
+            'insecure': data.get('insecure', False),
+            'active': data.get('active', True)
         }
         
         # 保存配置
