@@ -11,8 +11,8 @@ workers = 1
 # Worker类型
 worker_class = "eventlet"
 
-# Worker超时时间（秒）- 设置为5分钟以支持大文件压缩
-timeout = 300
+# Worker超时时间（秒）- 设置为15分钟以支持大镜像同步
+timeout = 900
 
 # 最大请求数（防止内存泄漏）
 max_requests = 1000

@@ -509,11 +509,7 @@ class ImageSyncer:
                     env=env  # 传递环境变量
                 )
                 
-                # 对于阿里云ACR，使用更长的超时时间
-                timeout_seconds = 300  # 默认5分钟
-                if 'aliyuncs.com' in registry['url']:
-                    timeout_seconds = 600  # 阿里云ACR使用10分钟超时
-                    self.emit_log(task_id, f"阿里云ACR同步，设置超时时间: {timeout_seconds}秒")
+                timeout_seconds = 1200  # 默认20分钟
                 
                 # 设置超时
                 stdout, stderr = process.communicate(timeout=timeout_seconds)
@@ -567,7 +563,7 @@ class ImageSyncer:
                     
             except subprocess.TimeoutExpired:
                 process.kill()
-                self.emit_log(task_id, f"镜像同步超时(3分钟)，请检查网络连接", "error")
+                self.emit_log(task_id, f"镜像同步超时(20分钟)，请检查网络连接", "error")
                 self.emit_log(task_id, f"建议：使用国内镜像源或检查网络配置", "error")
                 return False
         

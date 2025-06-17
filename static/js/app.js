@@ -312,6 +312,40 @@ class DockerSyncApp {
                 this.updateProgress(data);
             });
 
+            // 添加断线重连处理
+            this.socket.on('disconnect', (reason) => {
+                console.warn('WebSocket连接断开:', reason);
+                this.updateConnectionStatus('disconnected');
+                
+                // 如果有任务在运行，自动启动轮询作为备选
+                if (this.currentTaskId) {
+                    console.log('检测到任务运行中，WebSocket断开后启动轮询备选方案');
+                    this.addLogEntry({
+                        timestamp: new Date().toLocaleString(),
+                        level: 'warning',
+                        message: `⚠️ WebSocket连接断开 (${reason})，自动切换到HTTP轮询模式继续监控...`
+                    });
+                    this.startStatusPolling();
+                }
+            });
+
+            // 添加重连成功处理
+            this.socket.on('reconnect', (attemptNumber) => {
+                console.log('WebSocket重新连接成功，尝试次数:', attemptNumber);
+                this.updateConnectionStatus('connected');
+                
+                if (this.currentTaskId) {
+                    this.addLogEntry({
+                        timestamp: new Date().toLocaleString(),
+                        level: 'success',
+                        message: `✅ WebSocket重新连接成功，恢复实时监控模式`
+                    });
+                    
+                    // 重连成功后，如果轮询还在运行，可以考虑停止轮询（可选）
+                    // 但为了安全起见，让轮询和WebSocket并行运行，轮询会在任务完成时自动停止
+                }
+            });
+
         } catch (error) {
             console.error('WebSocket初始化失败，使用轮询模式:', error);
             this.updateConnectionStatus('connected');
@@ -782,7 +816,7 @@ class DockerSyncApp {
         }
     }
 
-    // 定时刷新任务状态（备用方案）
+    // 定时刷新任务状态（智能轮询：基于任务状态自动停止）
     startStatusPolling() {
         if (!this.currentTaskId) return;
 
@@ -791,9 +825,17 @@ class DockerSyncApp {
             clearInterval(this.pollingInterval);
         }
 
-        console.log(`开始轮询任务状态: ${this.currentTaskId}`);
+        console.log(`开始智能轮询任务状态: ${this.currentTaskId}`);
+        
+        // 轮询计数器，用于显示轮询时长
+        let pollCount = 0;
+        const startTime = Date.now();
         
         const pollTask = async () => {
+            pollCount++;
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            console.log(`轮询第${pollCount}次，已运行${elapsed}秒`);
+            
             try {
                 const status = await this.getTaskStatus(this.currentTaskId);
                 if (status) {
@@ -817,35 +859,62 @@ class DockerSyncApp {
                         }
                     }
 
-                    // 如果任务完成，停止轮询
+                    // 如果任务完成或失败，停止轮询
                     if (status.status !== 'running') {
-                        console.log(`任务${status.status}，停止轮询`);
+                        console.log(`任务${status.status}，运行${elapsed}秒后停止轮询`);
                         this.clearPolling();
                         this.currentTaskId = null;
+                        
+                        // 添加轮询完成日志
+                        this.addLogEntry({
+                            timestamp: new Date().toLocaleString(),
+                            level: 'info',
+                            message: `✅ 轮询结束，任务状态: ${status.status}，总轮询次数: ${pollCount}次，运行时长: ${elapsed}秒`
+                        });
                     }
                 } else {
                     console.error('获取任务状态失败');
+                    // 如果连续获取状态失败，可能任务已经不存在，停止轮询
+                    this.addLogEntry({
+                        timestamp: new Date().toLocaleString(),
+                        level: 'warning',
+                        message: `⚠️ 无法获取任务状态，可能任务已完成或异常终止`
+                    });
                 }
             } catch (error) {
                 console.error('轮询任务状态失败:', error);
                 this.addLogEntry({
                     timestamp: new Date().toLocaleString(),
                     level: 'error',
-                    message: `获取任务状态失败: ${error.message}`
+                    message: `❌ 获取任务状态失败: ${error.message}`
                 });
+                
+                // 如果网络错误连续发生，避免无限轮询消耗资源
+                if (pollCount > 10 && error.message.includes('fetch')) {
+                    console.warn('网络错误过多，停止轮询');
+                    this.addLogEntry({
+                        timestamp: new Date().toLocaleString(),
+                        level: 'error',
+                        message: `🚫 网络连接异常，自动停止轮询。请检查网络连接或手动刷新页面`
+                    });
+                    this.clearPolling();
+                    this.currentTaskId = null;
+                }
             }
         };
 
         // 立即执行一次
         pollTask();
         
-        // 每2秒轮询一次
+        // 每2秒轮询一次，直到任务完成
         this.pollingInterval = setInterval(pollTask, 2000);
-
-        // 5分钟后自动停止轮询
-        setTimeout(() => {
-            this.clearPolling();
-        }, 300000);
+        
+        // 添加开始轮询的日志
+        this.addLogEntry({
+            timestamp: new Date().toLocaleString(),
+            level: 'info',
+            message: `🔄 开始智能轮询任务进度，将持续监控直到同步完成...`
+        });
     }
 
     // 清理轮询
@@ -853,7 +922,7 @@ class DockerSyncApp {
         if (this.pollingInterval) {
             clearInterval(this.pollingInterval);
             this.pollingInterval = null;
-            console.log('轮询已停止');
+            console.log('智能轮询已停止');
         }
     }
 

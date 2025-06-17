@@ -12,7 +12,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./config:/app/config:ro
+      - ./config:/app/config
       - sync_logs:/app/logs
       - sync_downloads:/app/downloads
       #- /var/run/docker.sock:/var/run/docker.sock:ro
