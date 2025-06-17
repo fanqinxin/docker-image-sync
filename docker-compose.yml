@@ -7,8 +7,8 @@ services:
       dockerfile: Dockerfile
     image: docker-image-sync:latest
     container_name: docker-image-sync
-      # 修改为python3启动，定时清理镜像
-      command: python3 app.py
+    # 修改为python3启动，定时清理镜像
+    command: python3 app.py
     ports:
       - "5000:5000"
     volumes:

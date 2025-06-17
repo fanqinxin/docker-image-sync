@@ -8,33 +8,6 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/all.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            color: white;
-            margin-right: 15px;
-            font-size: 1.2rem;
-        }
-        .admin-avatar { background: var(--danger); }
-        .user-avatar-default { background: var(--primary-color); }
-        
-        .user-card {
-            transition: all 0.2s ease;
-            border: 1px solid var(--border-light) !important;
-        }
-        .user-card:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-md) !important;
-        }
-        
-        .status-active { color: var(--success) !important; }
-        .status-inactive { color: var(--danger) !important; }
-        
         .password-field {
             position: relative;
         }
@@ -51,7 +24,7 @@
     </style>
 </head>
 <body>
-    <!-- 现代化导航栏 -->
+    <!-- 导航栏 -->
     <nav class="navbar">
         <div class="container">
             <div class="d-flex align-items-center">
@@ -86,7 +59,7 @@
     </nav>
 
     <div class="container">
-        <!-- 页面标题和操作 -->
+        <!-- 页面标题 -->
         <div class="card mb-4">
             <div class="card-body">
                 <div class="row align-items-center">
@@ -98,7 +71,7 @@
                         <button class="btn btn-success" onclick="showCreateUserModal()">
                             <i class="fas fa-plus me-2"></i>创建用户
                         </button>
-                        <button class="btn btn-outline-secondary" onclick="refreshUsersList()">
+                        <button class="btn btn-outline-secondary" onclick="loadUsers()">
                             <i class="fas fa-sync-alt me-2"></i>刷新列表
                         </button>
                     </div>
@@ -209,8 +182,8 @@
                         </div>
                         
                         <div class="mb-3">
-                            <label for="user-display-name" class="form-label">显示名称</label>
-                            <input type="text" class="form-control" id="user-display-name">
+                            <label for="user-display-name-input" class="form-label">显示名称</label>
+                            <input type="text" class="form-control" id="user-display-name-input">
                             <div class="form-text">用于显示的友好名称</div>
                         </div>
                         
@@ -271,437 +244,476 @@
         </div>
     </div>
 
-    <!-- 删除确认模态框 -->
-    <div class="modal fade" id="deleteUserModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">
-                        <i class="fas fa-exclamation-triangle text-danger me-2"></i>确认删除
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p>您确定要删除用户 <strong id="delete-user-name"></strong> 吗？</p>
-                    <div class="alert alert-danger">
-                        <i class="fas fa-warning me-2"></i>
-                        <strong>警告：</strong>删除后将无法恢复，该用户的所有数据将被永久删除。
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-danger" id="confirm-delete-user-btn">
-                        <i class="fas fa-trash me-2"></i>确认删除
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <script>
-        // 简化的用户认证类，仅用于用户管理页面
-        class SimpleUserAuth {
-            constructor() {
-                this.currentUser = null;
-                this.init();
-            }
+        // 全局变量
+        let users = [];
+        let currentEditUser = null;
 
-            async init() {
-                await this.loadUserInfo();
-            }
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadUserInfo();
+            loadUsers();
+            bindEvents();
+        });
 
-            async loadUserInfo() {
-                try {
-                    const response = await fetch('/api/user/info');
-                    if (response.ok) {
-                        this.currentUser = await response.json();
-                        this.updateUserUI();
-                    } else if (response.status === 401) {
-                        window.location.href = '/login';
-                        return;
+        // 绑定事件
+        function bindEvents() {
+            // 表单提交
+            document.getElementById('userForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveUser();
+            });
+
+            // 搜索和过滤
+            document.getElementById('search-users').addEventListener('input', filterUsers);
+            document.getElementById('filter-role').addEventListener('change', filterUsers);
+            document.getElementById('filter-status').addEventListener('change', filterUsers);
+        }
+
+        // 加载用户信息
+        async function loadUserInfo() {
+            try {
+                const response = await fetch('/api/user/info');
+                if (response.ok) {
+                    const data = await response.json();
+                    const displayNameElement = document.getElementById('user-display-name-input');
+                    if (displayNameElement) {
+                        displayNameElement.textContent = data.display_name || data.username;
                     }
-                } catch (error) {
-                    console.error('获取用户信息失败:', error);
+                } else if (response.status === 401) {
                     window.location.href = '/login';
                 }
-            }
-
-            updateUserUI() {
-                if (!this.currentUser) return;
-
-                const displayNameElement = document.getElementById('user-display-name');
-                if (displayNameElement) {
-                    displayNameElement.textContent = this.currentUser.display_name || this.currentUser.username;
-                }
-            }
-
-            async logout() {
-                try {
-                    const response = await fetch('/api/logout', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-
-                    if (response.ok) {
-                        this.currentUser = null;
-                        window.location.href = '/login';
-                    } else {
-                        throw new Error('登出失败');
-                    }
-                } catch (error) {
-                    console.error('登出错误:', error);
-                    window.location.href = '/login';
-                }
+            } catch (error) {
+                console.error('加载用户信息失败:', error);
+                window.location.href = '/login';
             }
         }
 
-        // 用户管理类
-        class UserManager {
-            constructor() {
-                this.users = [];
-                this.currentEditUser = null;
-                this.init();
-            }
-
-            async init() {
-                await this.loadUsers();
-                this.bindEvents();
-            }
-
-            bindEvents() {
-                // 表单提交
-                document.getElementById('userForm').addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    this.saveUser();
-                });
-
-                // 搜索和过滤
-                document.getElementById('search-users').addEventListener('input', () => {
-                    this.filterUsers();
-                });
-                document.getElementById('filter-role').addEventListener('change', () => {
-                    this.filterUsers();
-                });
-                document.getElementById('filter-status').addEventListener('change', () => {
-                    this.filterUsers();
-                });
-            }
-
-            async loadUsers() {
-                try {
-                    const response = await fetch('/api/admin/users');
-                    if (response.ok) {
-                        this.users = await response.json();
-                        this.renderUsers();
-                        this.updateStatistics();
-                    } else {
-                        throw new Error('获取用户列表失败');
-                    }
-                } catch (error) {
-                    console.error('加载用户失败:', error);
-                    this.showError('加载用户列表失败，请刷新页面重试');
+        // 加载用户列表
+        async function loadUsers() {
+            try {
+                const response = await fetch('/api/admin/users');
+                if (response.ok) {
+                    users = await response.json();
+                    console.log('Loaded users:', users);
+                    renderUsers();
+                    updateStatistics();
+                } else {
+                    throw new Error('获取用户列表失败');
                 }
+            } catch (error) {
+                console.error('加载用户失败:', error);
+                showError('加载用户列表失败，请刷新页面重试');
+            }
+        }
+
+        // 渲染用户列表
+        function renderUsers(usersToRender = null) {
+            const userList = usersToRender || users;
+            const container = document.getElementById('users-container');
+            if (!container) return;
+
+            if (userList.length === 0) {
+                container.innerHTML = `
+                    <div class="col-12 text-center py-5">
+                        <i class="fas fa-users text-muted" style="font-size: 4rem;"></i>
+                        <div class="mt-3">
+                            <h5 class="text-muted">暂无用户</h5>
+                            <p class="text-muted">点击"创建用户"按钮开始添加用户</p>
+                            <button class="btn btn-primary" onclick="showCreateUserModal()">
+                                <i class="fas fa-plus me-2"></i>创建用户
+                            </button>
+                        </div>
+                    </div>
+                `;
+                return;
             }
 
-            renderUsers(usersToRender = null) {
-                const users = usersToRender || this.users;
-                const container = document.getElementById('users-container');
-                
-                if (users.length === 0) {
-                    container.innerHTML = `
-                        <div class="col-12 text-center py-5">
-                            <i class="fas fa-users text-muted" style="font-size: 4rem;"></i>
-                            <div class="mt-3">
-                                <h5 class="text-muted">暂无用户</h5>
-                                <p class="text-muted">点击"创建用户"按钮开始添加用户</p>
-                                <button class="btn btn-primary" onclick="showCreateUserModal()">
-                                    <i class="fas fa-plus me-2"></i>创建用户
+            container.innerHTML = userList.map(user => `
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100 ${!user.active ? 'bg-light' : ''}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="card-title mb-0">
+                                    ${escapeHtml(user.display_name || user.username)}
+                                    ${user.role === 'admin' ? '<span class="badge bg-primary ms-2">管理员</span>' : ''}
+                                    ${!user.active ? '<span class="badge bg-secondary ms-2">已禁用</span>' : ''}
+                                </h5>
+                            </div>
+                            <div class="mb-3">
+                                <p class="card-text mb-1">
+                                    <i class="fas fa-user me-2"></i>${escapeHtml(user.username)}
+                                </p>
+                                ${user.email ? `
+                                    <p class="card-text mb-1">
+                                        <i class="fas fa-envelope me-2"></i>${escapeHtml(user.email)}
+                                    </p>
+                                ` : ''}
+                                <p class="card-text mb-1">
+                                    <i class="fas fa-clock me-2"></i>创建时间：${formatDate(user.created_at)}
+                                </p>
+                                ${user.last_login ? `
+                                    <p class="card-text mb-1">
+                                        <i class="fas fa-sign-in-alt me-2"></i>最后登录：${formatDate(user.last_login)}
+                                    </p>
+                                ` : ''}
+                            </div>
+                            <div class="d-flex justify-content-end">
+                                <button class="btn btn-sm btn-outline-primary me-2" onclick="editUser('${escapeHtml(user.username)}')">
+                                    <i class="fas fa-edit me-1"></i>编辑
+                                </button>
+                                <button class="btn btn-sm btn-outline-${user.active ? 'warning' : 'success'}" 
+                                        onclick="toggleUserStatus('${escapeHtml(user.username)}')">
+                                    <i class="fas fa-${user.active ? 'ban' : 'check'} me-1"></i>${user.active ? '禁用' : '启用'}
                                 </button>
                             </div>
                         </div>
-                    `;
-                    return;
-                }
-
-                container.innerHTML = users.map((user, index) => `
-                    <div class="col-lg-6 col-xl-4 mb-4">
-                        <div class="card user-card h-100">
-                            <div class="card-body">
-                                <div class="d-flex align-items-center mb-3">
-                                    <div class="${user.role === 'admin' ? 'user-avatar admin-avatar' : 'user-avatar user-avatar-default'}">
-                                        ${this.getUserInitials(user.display_name || user.username)}
-                                    </div>
-                                    <div class="flex-grow-1">
-                                        <h6 class="mb-1">${this.escapeHtml(user.display_name || user.username)}</h6>
-                                        <small class="text-muted">@${this.escapeHtml(user.username)}</small>
-                                    </div>
-                                    <div class="dropdown">
-                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                                            <i class="fas fa-ellipsis-v"></i>
-                                        </button>
-                                        <ul class="dropdown-menu dropdown-menu-end">
-                                            <li><button class="dropdown-item" onclick="userManager.editUser('${user.username}')">
-                                                <i class="fas fa-edit me-2"></i>编辑
-                                            </button></li>
-                                            <li><button class="dropdown-item" onclick="userManager.toggleUserStatus('${user.username}')">
-                                                <i class="fas fa-${user.active ? 'ban' : 'check'} me-2"></i>${user.active ? '禁用' : '启用'}
-                                            </button></li>
-                                            <li><hr class="dropdown-divider"></li>
-                                            <li><button class="dropdown-item text-danger" onclick="userManager.deleteUser('${user.username}')">
-                                                <i class="fas fa-trash me-2"></i>删除
-                                            </button></li>
-                                        </ul>
-                                    </div>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <div class="d-flex align-items-center mb-2">
-                                        <span class="badge ${user.role === 'admin' ? 'bg-danger' : 'bg-primary'} me-2">
-                                            <i class="fas fa-${user.role === 'admin' ? 'user-shield' : 'user'} me-1"></i>
-                                            ${user.role === 'admin' ? '管理员' : '用户'}
-                                        </span>
-                                        <span class="badge ${user.active ? 'bg-success' : 'bg-secondary'}">
-                                            <i class="fas fa-${user.active ? 'check' : 'ban'} me-1"></i>
-                                            ${user.active ? '启用' : '禁用'}
-                                        </span>
-                                    </div>
-                                    ${user.email ? `
-                                        <div class="d-flex align-items-center mb-2">
-                                            <i class="fas fa-envelope text-muted me-2"></i>
-                                            <small>${this.escapeHtml(user.email)}</small>
-                                        </div>
-                                    ` : ''}
-                                    ${user.last_login ? `
-                                        <div class="d-flex align-items-center">
-                                            <i class="fas fa-clock text-muted me-2"></i>
-                                            <small class="text-muted">最后登录: ${this.formatDate(user.last_login)}</small>
-                                        </div>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        </div>
                     </div>
-                `).join('');
+                </div>
+            `).join('');
+        }
+
+        // 更新统计信息
+        function updateStatistics() {
+            const total = users.length;
+            const admins = users.filter(u => u.role === 'admin').length;
+            const active = users.filter(u => u.active).length;
+            const inactive = total - active;
+
+            document.getElementById('total-users').textContent = total;
+            document.getElementById('admin-count').textContent = admins;
+            document.getElementById('active-count').textContent = active;
+            document.getElementById('inactive-count').textContent = inactive;
+        }
+
+        // 过滤用户
+        function filterUsers() {
+            const search = document.getElementById('search-users').value.toLowerCase();
+            const roleFilter = document.getElementById('filter-role').value;
+            const statusFilter = document.getElementById('filter-status').value;
+
+            const filtered = users.filter(user => {
+                const matchesSearch = !search || 
+                    user.username.toLowerCase().includes(search) ||
+                    (user.display_name && user.display_name.toLowerCase().includes(search));
+                
+                const matchesRole = !roleFilter || user.role === roleFilter;
+                
+                const matchesStatus = !statusFilter || 
+                    (statusFilter === 'active' && user.active) ||
+                    (statusFilter === 'inactive' && !user.active);
+
+                return matchesSearch && matchesRole && matchesStatus;
+            });
+
+            renderUsers(filtered);
+        }
+
+        // 显示创建用户模态框
+        function showCreateUserModal() {
+            currentEditUser = null;
+            resetForm();
+            
+            document.getElementById('userModalTitle').innerHTML = '<i class="fas fa-user-plus me-2"></i>创建用户';
+            
+            const modal = new bootstrap.Modal(document.getElementById('userModal'));
+            modal.show();
+        }
+
+        // 编辑用户
+        function editUser(username) {
+            console.log('Editing user:', username);
+            const user = users.find(u => u.username === username);
+            if (!user) {
+                console.error('User not found:', username);
+                return;
             }
 
-            updateStatistics() {
-                const total = this.users.length;
-                const admins = this.users.filter(u => u.role === 'admin').length;
-                const active = this.users.filter(u => u.active).length;
-                const inactive = total - active;
-
-                document.getElementById('total-users').textContent = total;
-                document.getElementById('admin-count').textContent = admins;
-                document.getElementById('active-count').textContent = active;
-                document.getElementById('inactive-count').textContent = inactive;
+            console.log('Found user:', user);
+            currentEditUser = username;
+            
+            // 直接清空和设置表单字段，避免使用reset()
+            document.getElementById('user-username').value = user.username;
+            document.getElementById('user-username').disabled = true;
+            document.getElementById('user-display-name-input').value = user.display_name || user.username;
+            document.getElementById('user-email').value = user.email || '';
+            document.getElementById('user-role').value = user.role;
+            document.getElementById('user-active').checked = user.active;
+            
+            // 清空密码字段
+            document.getElementById('user-password').value = '';
+            document.getElementById('user-password-confirm').value = '';
+            
+            // 编辑时密码可选
+            document.getElementById('user-password').required = false;
+            document.getElementById('user-password-confirm').required = false;
+            document.getElementById('password-confirm-field').style.display = 'none';
+            
+            document.getElementById('userModalTitle').innerHTML = '<i class="fas fa-edit me-2"></i>编辑用户';
+            
+            // 验证填充结果
+            const displayNameField = document.getElementById('user-display-name-input');
+            console.log('Form filled with user data:', {
+                username: user.username,
+                display_name: user.display_name,
+                filled_display_name: displayNameField.value,
+                email: user.email,
+                role: user.role,
+                active: user.active
+            });
+            
+            // 如果display_name字段仍然为空，强制重新设置
+            if (!displayNameField.value && user.display_name) {
+                console.log('Display name field is empty, forcing refill...');
+                displayNameField.value = user.display_name;
+                console.log('After force fill:', displayNameField.value);
             }
+            
+            const modal = new bootstrap.Modal(document.getElementById('userModal'));
+            modal.show();
+        }
 
-            filterUsers() {
-                const search = document.getElementById('search-users').value.toLowerCase();
-                const roleFilter = document.getElementById('filter-role').value;
-                const statusFilter = document.getElementById('filter-status').value;
+        // 保存用户
+        async function saveUser() {
+            const formData = getFormData();
+            if (!validateForm(formData)) return;
 
-                const filtered = this.users.filter(user => {
-                    const matchesSearch = !search || 
-                        user.username.toLowerCase().includes(search) ||
-                        (user.display_name && user.display_name.toLowerCase().includes(search));
-                    
-                    const matchesRole = !roleFilter || user.role === roleFilter;
-                    
-                    const matchesStatus = !statusFilter || 
-                        (statusFilter === 'active' && user.active) ||
-                        (statusFilter === 'inactive' && !user.active);
+            try {
+                const isEdit = currentEditUser !== null;
+                const url = isEdit ? `/api/admin/users/${currentEditUser}` : '/api/admin/users';
+                const method = isEdit ? 'PUT' : 'POST';
 
-                    return matchesSearch && matchesRole && matchesStatus;
+                const response = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
                 });
 
-                this.renderUsers(filtered);
+                const result = await response.json();
+
+                if (response.ok) {
+                    showSuccess(isEdit ? '用户更新成功' : '用户创建成功');
+                    bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
+                    await loadUsers();
+                } else {
+                    showError(result.error || '操作失败');
+                }
+            } catch (error) {
+                console.error('保存用户失败:', error);
+                showError('网络错误，请重试');
+            }
+        }
+
+        // 切换用户状态
+        async function toggleUserStatus(username) {
+            const user = users.find(u => u.username === username);
+            if (!user) return;
+
+            const newStatus = !user.active;
+            const action = newStatus ? '启用' : '禁用';
+
+            if (!confirm(`确定要${action}用户 ${user.username} 吗？`)) return;
+
+            try {
+                const response = await fetch(`/api/admin/users/${username}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active: newStatus })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showSuccess(`用户${action}成功`);
+                    await loadUsers();
+                } else {
+                    showError(result.error || '操作失败');
+                }
+            } catch (error) {
+                console.error('更新用户状态失败:', error);
+                showError('网络错误，请重试');
+            }
+        }
+
+        // 获取表单数据
+        function getFormData() {
+            const isEdit = currentEditUser !== null;
+            
+            const data = {
+                username: getElementValue('user-username'),
+                display_name: getElementValue('user-display-name-input'),
+                email: getElementValue('user-email'),
+                role: getElementValue('user-role'),
+                active: document.getElementById('user-active').checked
+            };
+
+            // 只在创建用户或密码不为空时包含密码
+            const password = getElementValue('user-password');
+            if (!isEdit || password) {
+                data.password = password;
             }
 
-            showCreateUserModal() {
-                this.currentEditUser = null;
-                this.resetForm();
-                
-                const titleElement = document.getElementById('userModalTitle');
-                if (titleElement) {
-                    titleElement.innerHTML = '<i class="fas fa-plus me-2"></i>创建用户';
-                }
-                
-                const usernameElement = document.getElementById('user-username');
-                if (usernameElement) {
-                    usernameElement.disabled = false;
-                }
-                
-                const confirmFieldElement = document.getElementById('password-confirm-field');
-                if (confirmFieldElement) {
-                    confirmFieldElement.style.display = '';
-                }
-                
-                const modalElement = document.getElementById('userModal');
-                if (modalElement) {
-                    const modal = new bootstrap.Modal(modalElement);
-                    modal.show();
-                }
+            return data;
+        }
+
+        // 获取元素值
+        function getElementValue(id) {
+            const element = document.getElementById(id);
+            return element ? (element.value || '').trim() : '';
+        }
+
+        // 验证表单
+        function validateForm(formData) {
+            if (!formData.username) {
+                showError('用户名不能为空');
+                return false;
             }
 
-            editUser(username) {
-                const user = this.users.find(u => u.username === username);
-                if (!user) return;
+            if (!formData.role) {
+                showError('请选择用户角色');
+                return false;
+            }
 
-                this.currentEditUser = username;
-                this.resetForm();
-                
-                // 安全设置表单元素值
-                const setElementValue = (id, value) => {
-                    const element = document.getElementById(id);
-                    if (element) {
-                        element.value = value || '';
+            const isEdit = currentEditUser !== null;
+            if (!isEdit || formData.password) {
+                if (!formData.password) {
+                    showError('密码不能为空');
+                    return false;
+                }
+
+                if (formData.password.length < 6) {
+                    showError('密码至少需要6个字符');
+                    return false;
+                }
+
+                if (!isEdit) {
+                    const confirmPassword = getElementValue('user-password-confirm');
+                    if (formData.password !== confirmPassword) {
+                        showError('两次输入的密码不一致');
+                        return false;
                     }
-                };
-                
-                const setElementProperty = (id, property, value) => {
-                    const element = document.getElementById(id);
-                    if (element) {
-                        element[property] = value;
-                    }
-                };
-                
-                const setElementStyle = (id, property, value) => {
-                    const element = document.getElementById(id);
-                    if (element && element.style) {
-                        element.style[property] = value;
-                    }
-                };
-
-                // 填充表单
-                setElementValue('user-username', user.username);
-                setElementProperty('user-username', 'disabled', true);
-                setElementValue('user-display-name', user.display_name);
-                setElementValue('user-email', user.email);
-                setElementValue('user-role', user.role);
-                setElementProperty('user-active', 'checked', user.active);
-                
-                // 编辑时密码可选
-                setElementProperty('user-password', 'required', false);
-                setElementProperty('user-password-confirm', 'required', false);
-                setElementStyle('password-confirm-field', 'display', 'none');
-                
-                const titleElement = document.getElementById('userModalTitle');
-                if (titleElement) {
-                    titleElement.innerHTML = '<i class="fas fa-edit me-2"></i>编辑用户';
-                }
-                
-                const modal = new bootstrap.Modal(document.getElementById('userModal'));
-                modal.show();
-            }
-
-            async saveUser() {
-                const formData = this.getFormData();
-                if (!this.validateForm(formData)) return;
-
-                try {
-                    const isEdit = this.currentEditUser !== null;
-                    const url = isEdit ? `/api/admin/users/${this.currentEditUser}` : '/api/admin/users';
-                    const method = isEdit ? 'PUT' : 'POST';
-
-                    const response = await fetch(url, {
-                        method: method,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(formData)
-                    });
-
-                    const result = await response.json();
-
-                    if (response.ok) {
-                        this.showSuccess(isEdit ? '用户更新成功' : '用户创建成功');
-                        bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
-                        await this.loadUsers();
-                    } else {
-                        this.showError(result.error || '操作失败');
-                    }
-                } catch (error) {
-                    console.error('保存用户失败:', error);
-                    this.showError('网络错误，请重试');
                 }
             }
 
-            async toggleUserStatus(username) {
-                const user = this.users.find(u => u.username === username);
-                if (!user) return;
+            return true;
+        }
 
-                const newStatus = !user.active;
-                const action = newStatus ? '启用' : '禁用';
+        // 重置表单
+        function resetForm() {
+            document.getElementById('userForm').reset();
+            
+            // 重置特殊字段
+            document.getElementById('user-username').disabled = false;
+            document.getElementById('user-password').required = true;
+            document.getElementById('user-password-confirm').required = true;
+            document.getElementById('password-confirm-field').style.display = '';
+            document.getElementById('user-active').checked = true;
+        }
 
-                if (!confirm(`确定要${action}用户 ${user.username} 吗？`)) return;
+        // 为编辑准备表单（不清空现有数据）
+        function prepareFormForEdit() {
+            // 只重置特殊字段状态，不清空数据
+            document.getElementById('user-username').disabled = false;
+            document.getElementById('user-password').required = false;
+            document.getElementById('user-password-confirm').required = false;
+            document.getElementById('password-confirm-field').style.display = 'none';
+            document.getElementById('user-active').checked = true;
+        }
 
-                try {
-                    const response = await fetch(`/api/admin/users/${username}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ active: newStatus })
-                    });
+        // 密码显示/隐藏切换
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            const button = input.nextElementSibling;
+            const icon = button.querySelector('i');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
 
-                    const result = await response.json();
+        // 工具函数
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
 
-                    if (response.ok) {
-                        this.showSuccess(`用户${action}成功`);
-                        await this.loadUsers();
-                    } else {
-                        this.showError(result.error || '操作失败');
-                    }
-                } catch (error) {
-                    console.error('更新用户状态失败:', error);
-                    this.showError('网络错误，请重试');
-                }
+        function formatDate(dateString) {
+            if (!dateString) return '从未';
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleString('zh-CN');
+            } catch (error) {
+                return dateString;
+            }
+        }
+
+        function showSuccess(message) {
+            showToast(message, 'success');
+        }
+
+        function showError(message) {
+            showToast(message, 'danger');
+        }
+
+        function showToast(message, type) {
+            // 创建toast容器（如果不存在）
+            let toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toast-container';
+                toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+                toastContainer.style.zIndex = '9999';
+                document.body.appendChild(toastContainer);
             }
 
-            deleteUser(username) {
-                const user = this.users.find(u => u.username === username);
-                if (!user) return;
+            // 创建toast元素
+            const toastId = 'toast-' + Date.now();
+            const toastHtml = `
+                <div id="${toastId}" class="toast" role="alert">
+                    <div class="toast-header">
+                        <i class="fas fa-${type === 'success' ? 'check-circle text-success' : 'exclamation-circle text-danger'} me-2"></i>
+                        <strong class="me-auto">${type === 'success' ? '成功' : '错误'}</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                </div>
+            `;
 
-                const deleteNameElement = document.getElementById('delete-user-name');
-                if (deleteNameElement) {
-                    deleteNameElement.textContent = user.username;
-                }
-                
-                const modalElement = document.getElementById('deleteUserModal');
-                if (!modalElement) return;
-                
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
+            toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+            const toastElement = document.getElementById(toastId);
+            const toast = new bootstrap.Toast(toastElement);
+            toast.show();
 
-                const confirmBtnElement = document.getElementById('confirm-delete-user-btn');
-                if (confirmBtnElement) {
-                    confirmBtnElement.onclick = async () => {
-                        try {
-                            const response = await fetch(`/api/admin/users/${username}`, {
-                                method: 'DELETE'
-                            });
+            // 自动清理
+            toastElement.addEventListener('hidden.bs.toast', () => {
+                toastElement.remove();
+            });
+        }
 
-                            const result = await response.json();
-
-                            if (response.ok) {
-                                this.showSuccess('用户删除成功');
-                                modal.hide();
-                                await this.loadUsers();
-                            } else {
-                                this.showError(result.error || '删除失败');
-                            }
-                        } catch (error) {
-                            console.error('删除用户失败:', error);
-                            this.showError('网络错误，请重试');
-                        }
-                    };
-                }
-            }
-
-            getFormData() {
-                const isEdit = this.currentEditUser !== null;
-                
-                // 安全获取DOM元素值的辅助函数
-                const getElementValue = (id, defaultValue = '') => {
-                    console.log(`尝试获取元素: ${id}`);
-                    const element = document.getElementById(id);
-                    if (!element) {
-                        console.log(`
+        function logout() {
+            fetch('/api/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }).then(() => {
+                window.location.href = '/login';
+            }).catch(() => {
+                window.location.href = '/login';
+            });
+        }
+    </script>
+</body>
+</html> 
