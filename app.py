@@ -1165,12 +1165,61 @@ def start_sync():
 @app.route('/api/task/<task_id>')
 @login_required
 def get_task_status(task_id):
-    """获取任务状态"""
-    task = sync_tasks.get(task_id)
-    if task:
-        return jsonify(task)
-    else:
-        return jsonify({'error': '任务不存在'}), 404
+    """获取任务状态 - 增强版"""
+    try:
+        task = sync_tasks.get(task_id)
+        if task:
+            # 检查任务是否真的还在运行
+            if task.get('status') == 'running':
+                # 检查任务运行时间，如果超过合理时间范围，标记为异常
+                start_time = task.get('start_time')
+                if start_time:
+                    elapsed = datetime.now() - start_time
+                    max_runtime = timedelta(hours=2)  # 最大运行时间2小时
+                    if elapsed > max_runtime:
+                        logger.warning(f"任务 {task_id} 运行时间超过 {max_runtime}，标记为超时失败")
+                        task['status'] = 'failed'
+                        task['end_time'] = datetime.now()
+                        task['error'] = f'任务运行超时 ({elapsed})'
+                        
+            return jsonify(task)
+        else:
+            # 任务不存在，可能的原因：
+            # 1. 任务已完成并被清理
+            # 2. 服务重启导致内存数据丢失
+            # 3. 任务ID错误
+            logger.warning(f"任务 {task_id} 不存在，可能已完成或服务重启")
+            
+            # 返回一个默认的完成状态，避免前端无限轮询
+            return jsonify({
+                'task_id': task_id,
+                'status': 'not_found',
+                'error': '任务不存在，可能已完成或服务重启',
+                'message': '无法找到该任务，请检查任务是否已完成',
+                'progress': 0,
+                'total': 0,
+                'logs': [{
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'level': 'warning',
+                    'message': '⚠️ 任务状态丢失，可能原因：1)任务已完成 2)服务重启 3)内存清理'
+                }]
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"获取任务状态失败: {e}")
+        return jsonify({
+            'task_id': task_id,
+            'status': 'error',
+            'error': f'获取任务状态时发生错误: {str(e)}',
+            'message': '系统错误，请稍后重试',
+            'progress': 0,
+            'total': 0,
+            'logs': [{
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'level': 'error',
+                'message': f'❌ 系统错误: {str(e)}'
+            }]
+        }), 500
 
 @app.route('/api/task/<task_id>/cancel', methods=['POST'])
 @login_required
@@ -2348,72 +2397,43 @@ def delete_registry(registry_index):
 
 @app.route('/health')
 def health_check():
-    """健康检查端点"""
+    """健康检查端点 - 增强版"""
     try:
-        # 检查基本服务状态
-        status = {
+        # 执行任务清理
+        cleaned_count = cleanup_completed_tasks()
+        
+        # 获取任务统计
+        running_count, total_count = get_active_tasks_count()
+        
+        # 检查系统状态
+        health_status = {
             'status': 'healthy',
             'timestamp': datetime.now().isoformat(),
-            'version': '1.0.0',
-            'service': 'docker-image-sync'
+            'tasks': {
+                'running': running_count,
+                'total': total_count,
+                'cleaned_this_check': cleaned_count
+            },
+            'system': {
+                'memory_tasks': len(sync_tasks),
+                'cleanup_enabled': True
+            }
         }
         
-        # 检查Skopeo工具
-        try:
-            result = subprocess.run(['skopeo', '--version'], 
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                status['skopeo'] = 'available'
-                status['skopeo_version'] = result.stdout.strip()
-            else:
-                status['skopeo'] = 'unavailable'
-        except Exception:
-            status['skopeo'] = 'unavailable'
+        # 如果有太多运行中的任务，标记为警告
+        if running_count > 5:
+            health_status['status'] = 'warning'
+            health_status['message'] = f'有 {running_count} 个任务正在运行，可能需要检查'
         
-        # 检查配置文件
-        config_status = {}
-        config_files = ['config/registries.yaml', 'config/users.yaml']
-        for config_file in config_files:
-            if os.path.exists(config_file):
-                config_status[config_file] = 'exists'
-            else:
-                config_status[config_file] = 'missing'
-        status['config'] = config_status
-        
-        # 检查目录
-        directories = ['logs', 'downloads', 'templates', 'static']
-        dir_status = {}
-        for directory in directories:
-            if os.path.exists(directory):
-                dir_status[directory] = 'exists'
-            else:
-                dir_status[directory] = 'missing'
-        status['directories'] = dir_status
-        
-        # 检查活跃任务
-        status['active_tasks'] = len(sync_tasks)
-        
-        # 检查内存使用（简单检查）
-        try:
-            memory = psutil.virtual_memory()
-            status['memory'] = {
-                'total': memory.total,
-                'available': memory.available,
-                'percent': memory.percent
-            }
-        except ImportError:
-            status['memory'] = 'psutil not available'
-        
-        return jsonify(status), 200
+        return jsonify(health_status)
         
     except Exception as e:
-        error_status = {
+        logger.error(f"健康检查失败: {e}")
+        return jsonify({
             'status': 'unhealthy',
             'timestamp': datetime.now().isoformat(),
-            'error': str(e),
-            'service': 'docker-image-sync'
-        }
-        return jsonify(error_status), 500
+            'error': str(e)
+        }), 500
 
 @app.route('/metrics')
 def metrics():
@@ -2467,6 +2487,77 @@ def metrics():
         
     except Exception as e:
         return f'# Error generating metrics: {str(e)}', 500, {'Content-Type': 'text/plain; charset=utf-8'}
+
+# 任务清理相关
+def cleanup_completed_tasks():
+    """清理已完成的任务，避免内存泄漏"""
+    current_time = datetime.now()
+    completed_statuses = ['completed', 'failed', 'cancelled']
+    task_retention_hours = 24  # 已完成任务保留24小时
+    
+    tasks_to_remove = []
+    for task_id, task in sync_tasks.items():
+        if task.get('status') in completed_statuses:
+            end_time = task.get('end_time')
+            if end_time:
+                age = current_time - end_time
+                if age.total_seconds() > task_retention_hours * 3600:
+                    tasks_to_remove.append(task_id)
+    
+    # 移除过期的已完成任务
+    for task_id in tasks_to_remove:
+        logger.info(f"清理过期任务: {task_id}")
+        del sync_tasks[task_id]
+    
+    return len(tasks_to_remove)
+
+def get_active_tasks_count():
+    """获取活跃任务数量"""
+    running_count = sum(1 for task in sync_tasks.values() if task.get('status') == 'running')
+    total_count = len(sync_tasks)
+    return running_count, total_count
+
+@app.route('/api/admin/tasks/cleanup', methods=['POST'])
+@admin_required  
+def manual_cleanup_tasks():
+    """手动清理已完成的任务"""
+    try:
+        cleaned_count = cleanup_completed_tasks()
+        current_user = session.get('username')
+        logger.info(f"管理员 {current_user} 手动清理了 {cleaned_count} 个任务")
+        
+        return jsonify({
+            'success': True,
+            'cleaned_count': cleaned_count,
+            'message': f'成功清理了 {cleaned_count} 个已完成的任务'
+        })
+    except Exception as e:
+        logger.error(f"手动清理任务失败: {e}")
+        return jsonify({'error': '清理任务失败'}), 500
+
+@app.route('/api/admin/tasks/status', methods=['GET'])
+@admin_required
+def get_all_tasks_status():
+    """获取所有任务状态（管理员）"""
+    try:
+        running_count, total_count = get_active_tasks_count()
+        
+        # 统计各状态的任务数量
+        status_counts = {}
+        for task in sync_tasks.values():
+            status = task.get('status', 'unknown')
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        return jsonify({
+            'total_tasks': total_count,
+            'running_tasks': running_count,
+            'status_breakdown': status_counts,
+            'memory_usage': len(sync_tasks),
+            'tasks': list(sync_tasks.keys())  # 返回任务ID列表
+        })
+    except Exception as e:
+        logger.error(f"获取任务状态失败: {e}")
+        return jsonify({'error': '获取任务状态失败'}), 500
 
 if __name__ == '__main__':
     # 确保配置目录存在

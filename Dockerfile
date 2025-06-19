@@ -47,7 +47,6 @@ COPY . .
 
 # 创建必要的目录并设置权限
 RUN mkdir -p config templates static/css static/js logs downloads \
-    && mkdir -p /root/.docker \
     && mkdir -p /tmp/docker-sync \
     && chmod -R 755 /app \
     && chmod -R 777 /tmp/docker-sync \
@@ -60,7 +59,6 @@ RUN mkdir -p config templates static/css static/js logs downloads \
 # 设置环境变量
 ENV HOME=/root
 ENV USER=root
-ENV DOCKER_CONFIG=/root/.docker
 ENV TMPDIR=/tmp/docker-sync
 
 # 暴露端口

@@ -12,7 +12,7 @@ workers = 1
 worker_class = "eventlet"
 
 # Worker超时时间（秒）- 设置为15分钟以支持大镜像同步
-timeout = 900
+timeout = 1500
 
 # 最大请求数（防止内存泄漏）
 max_requests = 1000

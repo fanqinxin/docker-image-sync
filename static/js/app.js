@@ -859,27 +859,78 @@ class DockerSyncApp {
                         }
                     }
 
-                    // 如果任务完成或失败，停止轮询
-                    if (status.status !== 'running') {
+                    // 如果任务完成、失败、取消或不存在，停止轮询
+                    if (['completed', 'failed', 'cancelled', 'not_found', 'error'].includes(status.status)) {
                         console.log(`任务${status.status}，运行${elapsed}秒后停止轮询`);
                         this.clearPolling();
                         this.currentTaskId = null;
                         
-                        // 添加轮询完成日志
+                        // 根据不同状态添加相应的轮询结束日志
+                        let statusMsg = '';
+                        let logLevel = 'info';
+                        
+                        switch (status.status) {
+                            case 'completed':
+                                statusMsg = '✅ 任务成功完成';
+                                logLevel = 'success';
+                                break;
+                            case 'failed':
+                                statusMsg = '❌ 任务执行失败';
+                                logLevel = 'error';
+                                break;
+                            case 'cancelled':
+                                statusMsg = '🚫 任务被取消';
+                                logLevel = 'warning';
+                                break;
+                            case 'not_found':
+                                statusMsg = '⚠️ 任务状态丢失(可能已完成或服务重启)';
+                                logLevel = 'warning';
+                                break;
+                            case 'error':
+                                statusMsg = '💥 系统错误，轮询中断';
+                                logLevel = 'error';
+                                break;
+                            default:
+                                statusMsg = `🔚 任务结束，状态: ${status.status}`;
+                        }
+                        
                         this.addLogEntry({
                             timestamp: new Date().toLocaleString(),
-                            level: 'info',
-                            message: `✅ 轮询结束，任务状态: ${status.status}，总轮询次数: ${pollCount}次，运行时长: ${elapsed}秒`
+                            level: logLevel,
+                            message: `${statusMsg}，总轮询次数: ${pollCount}次，运行时长: ${elapsed}秒`
                         });
+                        
+                        // 如果是任务状态丢失，给用户更明确的提示
+                        if (status.status === 'not_found') {
+                            this.addLogEntry({
+                                timestamp: new Date().toLocaleString(),
+                                level: 'info',
+                                message: `💡 建议：请检查文件管理区域确认任务是否已完成，或刷新页面查看最新状态`
+                            });
+                        }
                     }
                 } else {
                     console.error('获取任务状态失败');
-                    // 如果连续获取状态失败，可能任务已经不存在，停止轮询
+                    // 如果连续获取状态失败，增加失败计数
+                    if (!this.pollFailCount) this.pollFailCount = 0;
+                    this.pollFailCount++;
+                    
                     this.addLogEntry({
                         timestamp: new Date().toLocaleString(),
                         level: 'warning',
-                        message: `⚠️ 无法获取任务状态，可能任务已完成或异常终止`
+                        message: `⚠️ 无法获取任务状态(第${this.pollFailCount}次失败)，可能任务已完成或网络异常`
                     });
+                    
+                    // 如果连续失败超过5次，停止轮询
+                    if (this.pollFailCount >= 5) {
+                        this.addLogEntry({
+                            timestamp: new Date().toLocaleString(),
+                            level: 'error',
+                            message: `🚫 连续获取任务状态失败${this.pollFailCount}次，自动停止轮询`
+                        });
+                        this.clearPolling();
+                        this.currentTaskId = null;
+                    }
                 }
             } catch (error) {
                 console.error('轮询任务状态失败:', error);
